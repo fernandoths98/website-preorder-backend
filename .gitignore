@@ -78,4 +78,6 @@ dist/
 build/
 coverage/
 *.sql
+# ...except schema/migrations, which are source code, not dumps.
+!db/*.sql
 *.tar.gz

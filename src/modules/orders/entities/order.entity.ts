@@ -90,6 +90,12 @@ export class Order {
   @Column({ name: 'address_landmark', type: 'varchar', length: 160, nullable: true })
   addressLandmark: string | null;
 
+  /** sha1 of (phone + delivery type + total + lines). Makes a resubmitted
+   *  cart — double tap, back-button from the WhatsApp redirect — return the
+   *  original order instead of creating a twin. */
+  @Column({ name: 'wa_message_hash', type: 'char', length: 40, nullable: true })
+  waMessageHash: string | null;
+
   @OneToMany(() => OrderItem, (i) => i.order, { cascade: ['insert'] })
   items: OrderItem[];
 

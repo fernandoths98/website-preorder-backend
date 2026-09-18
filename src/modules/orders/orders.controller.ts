@@ -20,6 +20,7 @@ export class OrdersController {
   @Get(':orderNo')
   async findOne(@Param('orderNo') orderNo: string) {
     const order = await this.ordersService.findByOrderNo(orderNo);
+    const checkout = await this.ordersService.checkoutState(order);
     return {
       orderNo: order.orderNo,
       status: order.status,
@@ -28,6 +29,8 @@ export class OrdersController {
       grandTotal: Number(order.grandTotal),
       deliveryType: order.deliveryType,
       customerNote: order.customerNote,
+      payment: checkout.payment,
+      waUrl: checkout.waUrl,
       customer: {
         name: order.customer?.name ?? '',
         deliveryNote: order.customer?.deliveryNote ?? null,

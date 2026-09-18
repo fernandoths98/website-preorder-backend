@@ -21,13 +21,16 @@ import { BatchStatus } from '../batches/entities/po-batch.entity';
 import { BatchesService } from '../batches/batches.service';
 import { BundlesService } from '../bundles/bundles.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { PaymentStatus } from './entities/payment.entity';
+import { PaymentsService, type PaymentView } from './payments.service';
 
 export interface CreateOrderResult {
   orderNo: string;
   grandTotal: number;
   itemsCount: number;
-  /** wa.me deep link with the recap pre-filled. */
-  waUrl: string;
+  payment: PaymentView;
+  /** Only available after the payment is verified as paid. */
+  waUrl: string | null;
 }
 
 /** A resolved line before it becomes an OrderItem row. */
@@ -53,6 +56,7 @@ export class OrdersService {
     private readonly priceRepo: Repository<ProductBatchPrice>,
     private readonly batchesService: BatchesService,
     private readonly bundlesService: BundlesService,
+    private readonly paymentsService: PaymentsService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
   ) {}
@@ -92,7 +96,8 @@ export class OrdersService {
       where: { waMessageHash: hash, batchId: batch.id },
     });
     if (existing) {
-      return this.toResult(existing, lines);
+      const payment = await this.paymentsService.createOrReuse(existing);
+      return this.toResult(existing, lines, payment);
     }
 
     const order = await this.dataSource.transaction(async (manager) => {
@@ -164,7 +169,8 @@ export class OrdersService {
     this.logger.log(
       `Order ${order.orderNo}: ${totals.itemsCount} item, Rp${grandTotal}`,
     );
-    return this.toResult(order, lines);
+    const payment = await this.paymentsService.createOrReuse(order);
+    return this.toResult(order, lines, payment);
   }
 
   /** Public order lookup for the success page. No auth — the order number is
@@ -312,12 +318,42 @@ export class OrdersService {
     return createHash('sha1').update(payload).digest('hex');
   }
 
-  private toResult(order: Order, lines: ResolvedLine[]): CreateOrderResult {
+  private toResult(
+    order: Order,
+    lines: ResolvedLine[],
+    payment: PaymentView,
+  ): CreateOrderResult {
     return {
       orderNo: order.orderNo,
       grandTotal: Number(order.grandTotal),
       itemsCount: order.itemsCount,
-      waUrl: this.buildWaUrl(order, lines),
+      payment,
+      waUrl:
+        payment.status === PaymentStatus.PAID
+          ? this.buildWaUrl(order, lines)
+          : null,
+    };
+  }
+
+  async checkoutState(order: Order) {
+    const payment = await this.paymentsService.viewForOrder(order.id);
+    const lines: ResolvedLine[] = order.items.map((item) => ({
+      productId: String(item.productId),
+      productName: item.productName,
+      unit: item.unit,
+      qty: item.qty,
+      basePrice: Number(item.basePrice),
+      margin: Number(item.margin),
+      bundleId: item.bundleId ? String(item.bundleId) : null,
+      bundleName: item.bundleName,
+    }));
+
+    return {
+      payment,
+      waUrl:
+        payment?.status === PaymentStatus.PAID
+          ? this.buildWaUrl(order, lines)
+          : null,
     };
   }
 
@@ -358,6 +394,7 @@ export class OrdersService {
     }
 
     parts.push('', `*Total: ${rupiah(Number(order.grandTotal))}*`);
+    parts.push('*Pembayaran: LUNAS via QRIS NusaPay*');
     parts.push(
       order.deliveryType === DeliveryType.OFFICE
         ? `Antar: kantor${order.customer?.deliveryNote ? ` (${order.customer.deliveryNote})` : ''}`

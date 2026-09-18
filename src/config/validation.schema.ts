@@ -19,6 +19,11 @@ export const validationSchema = Joi.object({
   CORS_ORIGINS: Joi.string().default(''),
   WA_ADMIN_PHONE: Joi.string().default(''),
 
+  NUSAPAY_GATEWAY_URL: Joi.string().uri({ allowRelative: false }).optional(),
+  NUSAPAY_QR_GENERATE_PATH: Joi.string().default('/api/qr/qr-mpm-generate'),
+  NUSAPAY_TIMEOUT_MS: Joi.number().integer().min(1000).max(60000).default(20000),
+  WPO_PAYMENT_CALLBACK_KEY: Joi.string().min(32).optional(),
+
   // Optional so existing deployments keep booting. Required only by the
   // internal supplier-sync endpoint at request time.
   SUPPLIER_SYNC_TOKEN: Joi.string().min(32).optional(),

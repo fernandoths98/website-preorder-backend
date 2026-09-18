@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 
 import { ProductsService } from './products.service';
-import { QueryCatalogDto } from './dto/query-catalog.dto';
+import { CatalogSection, QueryCatalogDto } from './dto/query-catalog.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import {
   CatalogItem,
@@ -39,8 +39,9 @@ export class ProductsController {
   @CacheTTL(60_000)
   findCategories(
     @Query('batchId', new ParseIntPipe({ optional: true })) batchId?: number,
+    @Query('section') section?: CatalogSection,
   ): Promise<Array<{ name: string; count: number }>> {
-    return this.productsService.findCategories(batchId);
+    return this.productsService.findCategories(batchId, section);
   }
 
   @Get(':slug')

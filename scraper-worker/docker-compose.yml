@@ -1,0 +1,27 @@
+services:
+  wpo-scraper-worker:
+    build: .
+    container_name: wpo-scraper-worker
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      BACKEND_URL: http://wpo-api:3000
+      SUPPLIER_SYNC_TOKEN: ${SUPPLIER_SYNC_TOKEN}
+      KLIKINDOGROSIR_URL: ${KLIKINDOGROSIR_URL:-https://klikindogrosir.com/searchByListCustom?div=51&&product_name=Kebutuhan%20Dapur&&kategori_name=Kebutuhan%20Dapur}
+      KLIKINDOGROSIR_SUPPLIER_ID: ${KLIKINDOGROSIR_SUPPLIER_ID}
+      MIN_EXPECTED_PRODUCTS: ${MIN_EXPECTED_PRODUCTS:-30}
+    networks:
+      - kotdee-internal
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  kotdee-internal:
+    external: true
+    name: kotdee-internal

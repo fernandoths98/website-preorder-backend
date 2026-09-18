@@ -37,6 +37,36 @@ ON DUPLICATE KEY UPDATE
   `image_url`  = VALUES(`image_url`);
 
 -- ------------------------------------------------------------
+-- A2. PUBLISH THEM INTO THE OPEN BATCH
+--
+-- Without this the paket members exist as products but carry no
+-- product_batch_prices row, so BundlesService flags them "belum dipublish"
+-- and every paket renders sold_out on a fresh install. The storefront reads
+-- this table, not products.
+-- ------------------------------------------------------------
+SET @batch_id := (
+  SELECT `id` FROM `po_batches`
+  WHERE `status` = 'open'
+  ORDER BY `opens_at` DESC
+  LIMIT 1
+);
+
+INSERT INTO `product_batch_prices`
+  (`batch_id`,`product_id`,`base_price`,`margin`,`max_qty`,`po_status`,`sort_order`)
+SELECT @batch_id, p.`id`, p.`base_price`, p.`margin`, NULL, 'available', 100
+FROM `products` p
+WHERE @batch_id IS NOT NULL
+  AND p.`deleted_at` IS NULL
+  AND p.`sku` IN (
+    'MYK-GRG-1','GLA-PSR-500','MRG-CUP-200','MRG-CUP-250','MRG-KLG-500',
+    'TEH-CLP-25','MIE-INS-1','KCP-MNS-520','SAS-SMB-335','SNT-INS-65'
+  )
+ON DUPLICATE KEY UPDATE
+  `base_price` = VALUES(`base_price`),
+  `margin`     = VALUES(`margin`),
+  `po_status`  = VALUES(`po_status`);
+
+-- ------------------------------------------------------------
 -- B. PAKET DEFINITIONS
 -- ------------------------------------------------------------
 INSERT INTO `bundles`

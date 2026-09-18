@@ -70,15 +70,26 @@ CREATE TABLE IF NOT EXISTS `bundle_items` (
 -- lines so the paket's own price stays auditable. Sourcing still aggregates
 -- correctly because the view GROUPs BY product_id.
 -- ------------------------------------------------------------
+-- Order matters. `order_id` is only indexed as the leftmost column of that
+-- unique key, and fk_order_items_order depends on having an index. Dropping
+-- the key first fails with errno 1553, so: add the replacement index, THEN
+-- drop, THEN add the new foreign key.
+
+-- Step 1: new columns + a standalone index for the existing order FK.
+ALTER TABLE `order_items`
+  ADD COLUMN `bundle_id`   BIGINT UNSIGNED NULL AFTER `order_id`,
+  ADD COLUMN `bundle_name` VARCHAR(160)    NULL
+    COMMENT 'snapshot - paket this line came from, NULL = bought loose'
+    AFTER `bundle_id`,
+  ADD KEY `idx_order_items_order` (`order_id`),
+  ADD KEY `idx_order_items_bundle` (`bundle_id`);
+
+-- Step 2: now the unique key is no longer the only index on order_id.
 ALTER TABLE `order_items`
   DROP INDEX `uq_order_items_order_product`;
 
+-- Step 3: link the lines back to their paket.
 ALTER TABLE `order_items`
-  ADD COLUMN `bundle_id`   BIGINT UNSIGNED NULL AFTER `order_id`,
-  ADD COLUMN `bundle_name` VARCHAR(160)    NULL AFTER `bundle_id`
-    COMMENT 'snapshot - paket this line came from, NULL = bought loose',
-  ADD KEY `idx_order_items_order` (`order_id`),
-  ADD KEY `idx_order_items_bundle` (`bundle_id`),
   ADD CONSTRAINT `fk_order_items_bundle` FOREIGN KEY (`bundle_id`)
     REFERENCES `bundles` (`id`) ON DELETE SET NULL;
 

@@ -17,6 +17,7 @@ import { PaymentsController } from './payments.controller';
 import { BatchesModule } from '../batches/batches.module';
 import { ProductsModule } from '../products/products.module';
 import { BundlesModule } from '../bundles/bundles.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BundlesModule } from '../bundles/bundles.module';
     BatchesModule,
     ProductsModule,
     BundlesModule,
+    SettingsModule,
   ],
   controllers: [OrdersController, OrdersAdminController, PaymentsController],
   providers: [OrdersService, OrdersAdminService, PaymentsService],

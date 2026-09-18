@@ -161,15 +161,15 @@ export class PaymentsService {
       : null;
 
     await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(Payment).update(
-        { id: payment.id },
-        {
-          status: PaymentStatus.PAID,
-          paidAt,
-          providerReferenceNo,
-          rawCallback: dto.payload,
-        },
-      );
+      // Use save() instead of update() for the JSON column. TypeORM's
+      // QueryDeepPartialEntity typing does not accept Record<string, unknown>
+      // cleanly for JSON values, while the entity property itself does.
+      payment.status = PaymentStatus.PAID;
+      payment.paidAt = paidAt;
+      payment.providerReferenceNo = providerReferenceNo;
+      payment.rawCallback = dto.payload;
+      await manager.getRepository(Payment).save(payment);
+
       await manager.getRepository(Order).update(
         { id: payment.orderId },
         { status: OrderStatus.CONFIRMED },

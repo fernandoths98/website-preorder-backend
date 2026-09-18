@@ -55,6 +55,27 @@ export class ProductsService {
     return this.paginate(rows.map((r) => this.toCatalogItem(r)), query, total);
   }
 
+  async findCategories(batchId?: number): Promise<Array<{ name: string; count: number }>> {
+    const resolved =
+      batchId ?? Number(await this.batchesService.resolveOpenBatchId());
+
+    const rows = await this.priceRepo
+      .createQueryBuilder('pbp')
+      .innerJoin('pbp.product', 'p')
+      .select('p.category', 'name')
+      .addSelect('COUNT(*)', 'count')
+      .where('pbp.batch_id = :resolved', { resolved })
+      .andWhere('p.is_active = 1')
+      .andWhere('pbp.po_status != :hidden', { hidden: PoStatus.HIDDEN })
+      .andWhere("p.category IS NOT NULL")
+      .andWhere("TRIM(p.category) != ''")
+      .groupBy('p.category')
+      .orderBy('p.category', 'ASC')
+      .getRawMany<{ name: string; count: string }>();
+
+    return rows.map((row) => ({ name: row.name, count: Number(row.count) }));
+  }
+
   async findOneBySlug(slug: string, batchId?: number): Promise<CatalogItem> {
     const resolved = batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 

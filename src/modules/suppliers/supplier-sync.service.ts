@@ -20,6 +20,78 @@ export class SupplierSyncService {
     private readonly batches: BatchesService,
   ) {}
 
+  async preview(dto: SupplierSyncDto) {
+    const supplier = await this.suppliers.findOneBy({ id: String(dto.supplierId) });
+    if (!supplier) throw new NotFoundException('Supplier tidak ditemukan');
+
+    const existing = await this.dataSource.getRepository(Product).find({
+      where: { supplierId: supplier.id },
+    });
+    const byExternalId = new Map(
+      existing
+        .filter((product) => product.supplierExternalId)
+        .map((product) => [product.supplierExternalId as string, product]),
+    );
+
+    let wouldCreate = 0;
+    let wouldUpdate = 0;
+    let unchanged = 0;
+    const seen = new Set<string>();
+    const duplicateExternalIds: string[] = [];
+
+    for (const row of dto.products) {
+      if (seen.has(row.externalId)) duplicateExternalIds.push(row.externalId);
+      seen.add(row.externalId);
+
+      const product = byExternalId.get(row.externalId);
+      if (!product) {
+        wouldCreate += 1;
+        continue;
+      }
+
+      const available = row.available !== false;
+      const margin = row.margin ?? 2000;
+      const sku = row.sku.trim().toUpperCase();
+      const category = row.category || null;
+      const unit = row.unit || 'pcs';
+      const imageChanged = Boolean(row.imageUrl) && row.imageUrl !== product.imageUrl;
+
+      const changed =
+        product.sku !== sku ||
+        product.name !== row.name ||
+        product.category !== category ||
+        product.unit !== unit ||
+        imageChanged ||
+        Number(product.basePrice) !== Number(row.basePrice) ||
+        Number(product.margin) !== Number(margin) ||
+        product.supplierAvailable !== available;
+
+      if (changed) wouldUpdate += 1;
+      else unchanged += 1;
+    }
+
+    const wouldMarkUnavailable = existing.filter(
+      (product) =>
+        product.supplierAvailable &&
+        Boolean(product.supplierExternalId) &&
+        !seen.has(product.supplierExternalId as string),
+    ).length;
+
+    return {
+      dryRun: true,
+      supplier: { id: supplier.id, name: supplier.name },
+      snapshotComplete: true,
+      received: dto.products.length,
+      existing: existing.length,
+      wouldCreate,
+      wouldUpdate,
+      unchanged,
+      wouldMarkUnavailable,
+      duplicateExternalIds: [...new Set(duplicateExternalIds)],
+      safeToReconcile: duplicateExternalIds.length === 0,
+    };
+  }
+
   async reconcile(dto: SupplierSyncDto) {
     const supplier = await this.suppliers.findOneBy({ id: String(dto.supplierId) });
     if (!supplier) throw new NotFoundException('Supplier tidak ditemukan');

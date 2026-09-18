@@ -17,6 +17,7 @@ import { BundlesModule } from './modules/bundles/bundles.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
+import { MerchantsModule } from './modules/merchants/merchants.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
     OrdersModule,
     ReportsModule,
     PromotionsModule,
+    MerchantsModule,
   ],
   providers: [
     // Order matters: authentication resolves req.user before roles are checked.

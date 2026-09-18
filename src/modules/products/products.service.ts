@@ -191,6 +191,16 @@ export class ProductsService {
       .addOrderBy('p.name', 'ASC');
 
     if (query.category) qb.andWhere('p.category = :cat', { cat: query.category });
+    if (query.section === 'umkm') qb.andWhere('p.merchant_id IS NOT NULL');
+    if (query.section && query.section !== 'umkm') qb.andWhere('p.merchant_id IS NULL');
+
+    const sectionCategories: Record<string, string[]> = {
+      dapur: ['Beras', 'Gula', 'Keju', 'Margarin', 'Minyak Goreng', 'Tepung', 'Sembako', 'Protein', 'Makanan Instan'],
+      'sayur-buah': ['Sayur', 'Sayuran', 'Buah', 'Cabai', 'Cabe', 'Bawang', 'Sayur & Buah'],
+      'rumah-tangga': ['Rumah Tangga', 'Kebersihan', 'Peralatan Dapur', 'Peralatan Rumah Tangga'],
+    };
+    const allowedCategories = query.section ? sectionCategories[query.section] : undefined;
+    if (allowedCategories) qb.andWhere('p.category IN (:...sectionCategories)', { sectionCategories: allowedCategories });
     if (query.status) qb.andWhere('pbp.po_status = :st', { st: query.status });
     const keyword = query.q?.trim();
 

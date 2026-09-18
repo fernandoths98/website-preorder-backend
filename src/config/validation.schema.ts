@@ -18,4 +18,8 @@ export const validationSchema = Joi.object({
 
   CORS_ORIGINS: Joi.string().default(''),
   WA_ADMIN_PHONE: Joi.string().default(''),
+
+  // Optional so existing deployments keep booting. Required only by the
+  // internal supplier-sync endpoint at request time.
+  SUPPLIER_SYNC_TOKEN: Joi.string().min(32).optional(),
 });

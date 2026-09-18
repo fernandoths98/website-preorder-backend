@@ -8,6 +8,7 @@ import { SupplierSyncService } from './supplier-sync.service';
 @Controller('admin/supplier-sync')
 export class SupplierSyncController {
   constructor(private readonly service: SupplierSyncService) {}
+  @Post('preview') preview(@Body() dto: SupplierSyncDto){ return this.service.preview(dto); }
   @Post('reconcile') reconcile(@Body() dto: SupplierSyncDto){ return this.service.reconcile(dto); }
   @Get('runs') runs(@Query('limit') limit?: string){ return this.service.latest(limit ? Number(limit) : 20); }
 }

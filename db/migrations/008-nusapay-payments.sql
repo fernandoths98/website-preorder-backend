@@ -36,7 +36,7 @@ SELECT
   SUM(oi.line_total)  AS total_revenue
 FROM `order_items` oi
 JOIN `orders` o ON o.id = oi.order_id
-JOIN `payments` p ON p.order_id = o.id
-WHERE p.status = 'paid'
+LEFT JOIN `payments` p ON p.order_id = o.id
+WHERE (p.status = 'paid' OR p.id IS NULL)
   AND o.status IN ('confirmed','sourced')
 GROUP BY o.batch_id, oi.product_id, oi.product_name, oi.unit, oi.base_price;

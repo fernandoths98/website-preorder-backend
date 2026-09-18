@@ -11,6 +11,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Supplier } from '../../suppliers/entities/supplier.entity';
+import { Merchant } from '../../merchants/entities/merchant.entity';
+import { ProductImage } from './product-image.entity';
 import { ProductBatchPrice } from './product-batch-price.entity';
 import { decimalTransformer } from '../../../common/transformers/decimal.transformer';
 
@@ -26,6 +28,13 @@ export class Product {
   @ManyToOne(() => Supplier, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'supplier_id' })
   supplier?: Supplier;
+
+  @Column({ name: 'merchant_id', type: 'bigint', unsigned: true, nullable: true })
+  merchantId: string | null;
+
+  @ManyToOne(() => Merchant, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'merchant_id' })
+  merchant?: Merchant;
 
   @Column({ type: 'varchar', length: 48, unique: true })
   sku: string;
@@ -84,6 +93,9 @@ export class Product {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @OneToMany(() => ProductImage, (image) => image.product, { cascade: true })
+  images?: ProductImage[];
 
   @OneToMany(() => ProductBatchPrice, (p) => p.product)
   batchPrices?: ProductBatchPrice[];

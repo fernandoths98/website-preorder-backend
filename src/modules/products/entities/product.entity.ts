@@ -16,10 +16,15 @@ import { ProductImage } from './product-image.entity';
 import { ProductBatchPrice } from './product-batch-price.entity';
 import { decimalTransformer } from '../../../common/transformers/decimal.transformer';
 
+export enum MerchantProductStatus {
+  DRAFT = 'draft',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 @Entity('products')
 @Index('idx_products_active_category', ['isActive', 'category'])
-export enum MerchantProductStatus { DRAFT='draft', PENDING='pending', APPROVED='approved', REJECTED='rejected' }
-
 export class Product {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;

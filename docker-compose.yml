@@ -27,7 +27,9 @@ services:
       # Remove this line entirely if you never need a host-side client.
       - "127.0.0.1:3307:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p$$MYSQL_ROOT_PASSWORD"]
+      # CMD-SHELL, not CMD: the exec form runs no shell, so $MYSQL_ROOT_PASSWORD
+      # would be passed as a literal string and auth would fail forever.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
       timeout: 5s
       retries: 12

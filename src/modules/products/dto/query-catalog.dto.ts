@@ -1,6 +1,21 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PoStatus } from '../entities/product-batch-price.entity';
+
+export type CatalogSection =
+  | 'dapur'
+  | 'sayur-buah'
+  | 'rumah-tangga'
+  | 'paketan'
+  | 'umkm';
+
+export const CATALOG_SECTIONS: CatalogSection[] = [
+  'dapur',
+  'sayur-buah',
+  'rumah-tangga',
+  'paketan',
+  'umkm',
+];
 
 export class QueryCatalogDto {
   /** Omit to resolve the currently open batch. */
@@ -19,8 +34,8 @@ export class QueryCatalogDto {
 
   /** High-level storefront section, independent from supplier category names. */
   @IsOptional()
-  @IsString()
-  section?: string;
+  @IsIn(CATALOG_SECTIONS)
+  section?: CatalogSection;
 
   @IsOptional()
   @IsEnum(PoStatus)

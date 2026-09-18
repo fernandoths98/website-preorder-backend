@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import slugify from 'slugify';
 
 import { Product } from './entities/product.entity';
@@ -15,13 +15,48 @@ import {
 } from './entities/product-batch-price.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { QueryCatalogDto } from './dto/query-catalog.dto';
+import { CatalogSection, QueryCatalogDto } from './dto/query-catalog.dto';
 import {
   AdminCatalogItem,
   CatalogItem,
   Paginated,
 } from './interfaces/catalog-item.interface';
 import { BatchesService } from '../batches/batches.service';
+
+const SECTION_CATEGORIES: Partial<Record<CatalogSection, string[]>> = {
+  dapur: [
+    'Beras',
+    'Gula',
+    'Keju',
+    'Margarin',
+    'Minyak Goreng',
+    'Tepung',
+    'Kebutuhan Dapur',
+    'Sembako',
+    'Protein',
+    'Makanan Instan',
+  ],
+  'sayur-buah': [
+    'Sayur',
+    'Sayuran',
+    'Buah',
+    'Cabai',
+    'Cabe',
+    'Bawang',
+    'Sayur & Buah',
+    'Produk Segar',
+  ],
+  'rumah-tangga': [
+    'Rumah Tangga',
+    'Kebersihan',
+    'Peralatan Dapur',
+    'Peralatan Rumah Tangga',
+    'Cosmetic',
+  ],
+  // KlikIndogrosir publishes this as a recommendation collection rather than
+  // a taxonomy. We surface it as the storefront "Paketan" menu.
+  paketan: ['Rekomendasi Warung Sembako'],
+};
 
 @Injectable()
 export class ProductsService {
@@ -55,11 +90,14 @@ export class ProductsService {
     return this.paginate(rows.map((r) => this.toCatalogItem(r)), query, total);
   }
 
-  async findCategories(batchId?: number): Promise<Array<{ name: string; count: number }>> {
+  async findCategories(
+    batchId?: number,
+    section?: CatalogSection,
+  ): Promise<Array<{ name: string; count: number }>> {
     const resolved =
       batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 
-    const rows = await this.priceRepo
+    const qb = this.priceRepo
       .createQueryBuilder('pbp')
       .innerJoin('pbp.product', 'p')
       .select('p.category', 'name')
@@ -67,8 +105,12 @@ export class ProductsService {
       .where('pbp.batch_id = :resolved', { resolved })
       .andWhere('p.is_active = 1')
       .andWhere('pbp.po_status != :hidden', { hidden: PoStatus.HIDDEN })
-      .andWhere("p.category IS NOT NULL")
-      .andWhere("TRIM(p.category) != ''")
+      .andWhere('p.category IS NOT NULL')
+      .andWhere("TRIM(p.category) != ''");
+
+    this.applySectionFilter(qb, section);
+
+    const rows = await qb
       .groupBy('p.category')
       .orderBy('p.category', 'ASC')
       .getRawMany<{ name: string; count: string }>();
@@ -191,19 +233,10 @@ export class ProductsService {
       .addOrderBy('p.name', 'ASC');
 
     if (query.category) qb.andWhere('p.category = :cat', { cat: query.category });
-    if (query.section === 'umkm') qb.andWhere('p.merchant_id IS NOT NULL');
-    if (query.section && query.section !== 'umkm') qb.andWhere('p.merchant_id IS NULL');
-
-    const sectionCategories: Record<string, string[]> = {
-      dapur: ['Beras', 'Gula', 'Keju', 'Margarin', 'Minyak Goreng', 'Tepung', 'Sembako', 'Protein', 'Makanan Instan'],
-      'sayur-buah': ['Sayur', 'Sayuran', 'Buah', 'Cabai', 'Cabe', 'Bawang', 'Sayur & Buah'],
-      'rumah-tangga': ['Rumah Tangga', 'Kebersihan', 'Peralatan Dapur', 'Peralatan Rumah Tangga'],
-    };
-    const allowedCategories = query.section ? sectionCategories[query.section] : undefined;
-    if (allowedCategories) qb.andWhere('p.category IN (:...sectionCategories)', { sectionCategories: allowedCategories });
+    this.applySectionFilter(qb, query.section);
     if (query.status) qb.andWhere('pbp.po_status = :st', { st: query.status });
-    const keyword = query.q?.trim();
 
+    const keyword = query.q?.trim();
     if (keyword) {
       qb.andWhere(
         `(
@@ -215,6 +248,26 @@ export class ProductsService {
       );
     }
     return qb;
+  }
+
+  private applySectionFilter(
+    qb: SelectQueryBuilder<ProductBatchPrice>,
+    section?: CatalogSection,
+  ) {
+    if (!section) return;
+
+    if (section === 'umkm') {
+      qb.andWhere('p.merchant_id IS NOT NULL');
+      return;
+    }
+
+    qb.andWhere('p.merchant_id IS NULL');
+    const categories = SECTION_CATEGORIES[section];
+    if (categories?.length) {
+      qb.andWhere('p.category IN (:...sectionCategories)', {
+        sectionCategories: categories,
+      });
+    }
   }
 
   private toCatalogItem(row: ProductBatchPrice): CatalogItem {

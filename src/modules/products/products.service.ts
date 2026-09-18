@@ -229,6 +229,26 @@ export class ProductsService {
       .innerJoinAndSelect('pbp.product', 'p')
       .where('pbp.batch_id = :batchId', { batchId })
       .andWhere('p.is_active = 1')
+      // Prefer the current supplier-synced product when a legacy/manual row
+      // represents the same item. This removes duplicate storefront cards
+      // such as "TROPICAL ... 1000mL" vs "Tropical ... 1000 ml" while keeping
+      // the supplier record as the source of truth.
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM product_batch_prices pbp2
+          INNER JOIN products p2 ON p2.id = pbp2.product_id
+          WHERE pbp2.batch_id = pbp.batch_id
+            AND p2.id <> p.id
+            AND p2.is_active = 1
+            AND pbp2.po_status <> :dedupeHidden
+            AND p2.supplier_external_id IS NOT NULL
+            AND p.supplier_external_id IS NULL
+            AND REGEXP_REPLACE(LOWER(p2.name), '[^a-z0-9]', '') =
+                REGEXP_REPLACE(LOWER(p.name), '[^a-z0-9]', '')
+        )`,
+        { dedupeHidden: PoStatus.HIDDEN },
+      )
       .orderBy('pbp.sort_order', 'ASC')
       .addOrderBy('p.name', 'ASC');
 

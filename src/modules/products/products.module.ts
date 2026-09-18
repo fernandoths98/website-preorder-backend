@@ -4,6 +4,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 
 import { Product } from './entities/product.entity';
 import { ProductBatchPrice } from './entities/product-batch-price.entity';
+import { ProductImage } from './entities/product-image.entity';
 import { ProductsService } from './products.service';
 import { ProductsImportService } from './products-import.service';
 import { ProductsController } from './products.controller';
@@ -12,7 +13,7 @@ import { BatchesModule } from '../batches/batches.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Product, ProductBatchPrice]),
+    TypeOrmModule.forFeature([Product, ProductBatchPrice, ProductImage]),
     // CacheInterceptor is applied inside this module, so CACHE_MANAGER must be
     // resolvable here. Registering locally keeps the module self-contained
     // instead of depending on a global registration in AppModule.

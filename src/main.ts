@@ -33,7 +33,14 @@ async function bootstrap() {
   if (origins.length) app.enableCors({ origin: origins, credentials: true });
 
   const port = config.get<number>('PORT', 3000);
-  await app.listen(port, '127.0.0.1');
-  Logger.log(`API on http://127.0.0.1:${port}/api/v1`, 'Bootstrap');
+
+  // Loopback by default, so a bare-metal run is never accidentally public.
+  // In Docker the process must bind 0.0.0.0 to be reachable at all — the
+  // container's port is still published to 127.0.0.1 only (compose file),
+  // so OpenLiteSpeed can reach it and the internet cannot.
+  const host = config.get<string>('HOST', '127.0.0.1');
+
+  await app.listen(port, host);
+  Logger.log(`API on http://${host}:${port}/api/v1`, 'Bootstrap');
 }
 void bootstrap();

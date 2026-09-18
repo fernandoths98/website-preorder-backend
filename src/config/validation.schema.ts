@@ -4,6 +4,8 @@ import * as Joi from 'joi';
 export const validationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   PORT: Joi.number().default(3000),
+  // 0.0.0.0 inside Docker; loopback otherwise.
+  HOST: Joi.string().default('127.0.0.1'),
 
   DB_HOST: Joi.string().default('127.0.0.1'),
   DB_PORT: Joi.number().default(3306),

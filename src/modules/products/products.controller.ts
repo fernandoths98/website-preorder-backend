@@ -35,6 +35,14 @@ export class ProductsController {
     return this.productsService.findCatalog(query);
   }
 
+  @Get('categories')
+  @CacheTTL(60_000)
+  findCategories(
+    @Query('batchId', new ParseIntPipe({ optional: true })) batchId?: number,
+  ): Promise<Array<{ name: string; count: number }>> {
+    return this.productsService.findCategories(batchId);
+  }
+
   @Get(':slug')
   @CacheTTL(60_000)
   findOne(

@@ -90,10 +90,39 @@ Tempel hash-nya:
 ```bash
 docker compose exec -T mysql mysql -u root -p"$DB_ROOT_PASS" "$DB_NAME" <<'SQL'
 INSERT INTO admin_users (email, password_hash, role)
-VALUES ('kamu@email.com', '<TEMPEL_HASH_DI_SINI>', 'owner')
+VALUES ('kamu@email.com', 'TEMPEL_HASH_DI_SINI', 'owner')
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash);
 SQL
 ```
+
+Dua hal yang gampang bikin gagal di sini:
+
+- **`<<'SQL'` harus pakai kutip tunggal.** Hash argon2 penuh tanda `$`
+  (`$argon2id$v=19$m=65536...`). Di heredoc tanpa kutip, shell memperlakukan
+  tiap `$...` sebagai variabel dan hash-nya masuk ke DB dalam keadaan tercabik —
+  tanpa error apa pun. Login lalu gagal terus tanpa petunjuk.
+- **Pakai password asli**, bukan string contoh di perintah `argon2` di atas.
+  Hash dibuat dari persis apa yang kamu ketik di situ.
+
+Verifikasi sebelum lanjut:
+
+```bash
+docker compose exec -T mysql mysql -u root -p"$DB_ROOT_PASS" "$DB_NAME" \
+  -e "SELECT email, LEFT(password_hash,26) AS awal, LENGTH(password_hash) AS panjang FROM admin_users;"
+```
+
+`awal` harus `$argon2id$v=19$m=65536,p=4` dan `panjang` 97. Kalau tidak, hapus
+barisnya (`DELETE FROM admin_users WHERE email='...'`) lalu ulangi.
+
+Lalu tes login sungguhan:
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"kamu@email.com","password":"PasswordAdminKamu"}' | head -c 120
+```
+
+Keluar `accessToken` = beres. Keluar `401` = hash dan password tidak cocok.
 
 ## 6. OpenLiteSpeed
 

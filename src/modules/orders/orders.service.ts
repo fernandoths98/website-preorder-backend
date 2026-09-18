@@ -5,7 +5,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { createHash } from 'node:crypto';
@@ -23,6 +22,7 @@ import { BundlesService } from '../bundles/bundles.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { PaymentStatus } from './entities/payment.entity';
 import { PaymentsService, type PaymentView } from './payments.service';
+import { SettingsService } from '../settings/settings.service';
 
 export interface CreateOrderResult {
   orderNo: string;
@@ -57,7 +57,7 @@ export class OrdersService {
     private readonly batchesService: BatchesService,
     private readonly bundlesService: BundlesService,
     private readonly paymentsService: PaymentsService,
-    private readonly config: ConfigService,
+    private readonly settingsService: SettingsService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -318,11 +318,11 @@ export class OrdersService {
     return createHash('sha1').update(payload).digest('hex');
   }
 
-  private toResult(
+  private async toResult(
     order: Order,
     lines: ResolvedLine[],
     payment: PaymentView,
-  ): CreateOrderResult {
+  ): Promise<CreateOrderResult> {
     return {
       orderNo: order.orderNo,
       grandTotal: Number(order.grandTotal),
@@ -330,7 +330,7 @@ export class OrdersService {
       payment,
       waUrl:
         payment.status === PaymentStatus.PAID
-          ? this.buildWaUrl(order, lines)
+          ? await this.buildWaUrl(order, lines)
           : null,
     };
   }
@@ -352,7 +352,7 @@ export class OrdersService {
       payment,
       waUrl:
         payment?.status === PaymentStatus.PAID
-          ? this.buildWaUrl(order, lines)
+          ? await this.buildWaUrl(order, lines)
           : null,
     };
   }
@@ -362,8 +362,8 @@ export class OrdersService {
    * one thing to change, and so the totals in the message are the stored
    * ones rather than whatever the browser thinks.
    */
-  private buildWaUrl(order: Order, lines: ResolvedLine[]): string {
-    const admin = this.config.get<string>('WA_ADMIN_PHONE') ?? '';
+  private async buildWaUrl(order: Order, lines: ResolvedLine[]): Promise<string> {
+    const admin = await this.settingsService.getWhatsAppNumber();
     const rupiah = (n: number) => `Rp${Math.round(n).toLocaleString('id-ID')}`;
 
     const loose = lines.filter((l) => !l.bundleId);

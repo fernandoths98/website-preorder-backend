@@ -2,15 +2,20 @@ import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-valid
 import { Type } from 'class-transformer';
 import { PoStatus } from '../entities/product-batch-price.entity';
 
-export const CATALOG_SECTIONS = [
+export type CatalogSection =
+  | 'dapur'
+  | 'sayur-buah'
+  | 'rumah-tangga'
+  | 'paketan'
+  | 'umkm';
+
+export const CATALOG_SECTIONS: CatalogSection[] = [
   'dapur',
   'sayur-buah',
   'rumah-tangga',
   'paketan',
   'umkm',
-] as const;
-
-export type CatalogSection = (typeof CATALOG_SECTIONS)[number];
+];
 
 export class QueryCatalogDto {
   /** Omit to resolve the currently open batch. */

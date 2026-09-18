@@ -25,8 +25,6 @@ export class PaymentsService {
   constructor(
     @InjectRepository(Payment)
     private readonly payments: Repository<Payment>,
-    @InjectRepository(Order)
-    private readonly orders: Repository<Order>,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
   ) {}

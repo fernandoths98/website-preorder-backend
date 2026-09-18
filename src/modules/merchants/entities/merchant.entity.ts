@@ -8,7 +8,7 @@ export class Merchant {
  @PrimaryGeneratedColumn({type:'bigint',unsigned:true}) id:string;
  @Column({type:'varchar',length:160}) businessName:string; @Column({type:'varchar',length:160,unique:true}) slug:string;
  @Column({type:'varchar',length:120}) ownerName:string; @Column({type:'varchar',length:24}) phone:string;
- @Column({type:'varchar',length:160,nullable:true}) email:string|null; @Column({type:'varchar',length:80}) category:string;
+ @Column({type:'varchar',length:160,nullable:true}) email:string|null; @Column({name:'password_hash',type:'varchar',length:255,nullable:true,select:false}) passwordHash:string|null; @Column({type:'varchar',length:80}) category:string;
  @Column({type:'varchar',length:255}) address:string; @Column({type:'decimal',precision:10,scale:7,nullable:true}) latitude:number|null;
  @Column({type:'decimal',precision:10,scale:7,nullable:true}) longitude:number|null;
  @Column({type:'text',nullable:true}) description:string|null; @Column({type:'varchar',length:160,nullable:true}) instagram:string|null;

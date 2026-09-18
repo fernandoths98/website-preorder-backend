@@ -18,6 +18,8 @@ import { decimalTransformer } from '../../../common/transformers/decimal.transfo
 
 @Entity('products')
 @Index('idx_products_active_category', ['isActive', 'category'])
+export enum MerchantProductStatus { DRAFT='draft', PENDING='pending', APPROVED='approved', REJECTED='rejected' }
+
 export class Product {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
@@ -31,6 +33,12 @@ export class Product {
 
   @Column({ name: 'merchant_id', type: 'bigint', unsigned: true, nullable: true })
   merchantId: string | null;
+
+  @Column({ name: 'merchant_status', type: 'enum', enum: MerchantProductStatus, nullable: true })
+  merchantStatus: MerchantProductStatus | null;
+
+  @Column({ name: 'merchant_review_note', type: 'varchar', length: 500, nullable: true })
+  merchantReviewNote: string | null;
 
   @ManyToOne(() => Merchant, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'merchant_id' })

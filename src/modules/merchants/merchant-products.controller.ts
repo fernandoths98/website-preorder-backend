@@ -1,0 +1,2 @@
+import { Body, Controller, Get, Post, Req } from '@nestjs/common'; import { MerchantProductsService } from './merchant-products.service'; import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
+@Controller('merchant/products') export class MerchantProductsController{constructor(private s:MerchantProductsService){} @Get() list(@Req() req:any){return this.s.list(req.user.merchantId)} @Post() submit(@Req() req:any,@Body() dto:SubmitMerchantProductDto){return this.s.submit(req.user.merchantId,dto)}}

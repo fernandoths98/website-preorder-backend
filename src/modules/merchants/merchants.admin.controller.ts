@@ -11,5 +11,5 @@ export class MerchantsAdminController {
   @Get() findAll(){ return this.merchants.findAll(); }
   @Patch(':id/review') review(@Param('id') id:string,@Body() dto:ReviewMerchantDto){ return this.merchants.review(id,dto); }
   @Post(':id/password')
-  setPassword(@Param('id') id:string,@Body() body:{password:string}){ return this.service.setPassword(id,body.password); }
+  setPassword(@Param('id') id:string,@Body() body:{password:string}){ return this.merchants.setPassword(id,body.password); }
 }

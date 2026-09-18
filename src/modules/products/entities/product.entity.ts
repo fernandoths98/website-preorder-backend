@@ -32,6 +32,18 @@ export class Product {
   @Column({ name: 'supplier_id', type: 'bigint', unsigned: true, nullable: true })
   supplierId: string | null;
 
+  @Column({ name: 'supplier_external_id', type: 'varchar', length: 120, nullable: true })
+  supplierExternalId: string | null;
+
+  @Column({ name: 'supplier_available', type: 'boolean', default: true })
+  supplierAvailable: boolean;
+
+  @Column({ name: 'supplier_last_seen_at', type: 'datetime', nullable: true })
+  supplierLastSeenAt: Date | null;
+
+  @Column({ name: 'supplier_last_synced_at', type: 'datetime', nullable: true })
+  supplierLastSyncedAt: Date | null;
+
   @ManyToOne(() => Supplier, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'supplier_id' })
   supplier?: Supplier;

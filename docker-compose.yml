@@ -56,6 +56,10 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
       CORS_ORIGINS: ${CORS_ORIGINS}
       WA_ADMIN_PHONE: ${WA_ADMIN_PHONE}
+      NUSAPAY_GATEWAY_URL: ${NUSAPAY_GATEWAY_URL:-}
+      NUSAPAY_QR_GENERATE_PATH: ${NUSAPAY_QR_GENERATE_PATH:-/api/qr/qr-mpm-generate}
+      NUSAPAY_TIMEOUT_MS: ${NUSAPAY_TIMEOUT_MS:-20000}
+      WPO_PAYMENT_CALLBACK_KEY: ${WPO_PAYMENT_CALLBACK_KEY:-}
     ports:
       # Kept for curl from the VPS itself. Traefik reaches the container by
       # name on kotdee-internal, not through this publish — a 127.0.0.1

@@ -3,12 +3,21 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
   const config = app.get(ConfigService);
+
+  // Supplier snapshots can contain thousands of products. The default Express
+  // JSON limit (~100 KB) is too small for a complete catalog snapshot, so use
+  // an explicit bounded limit while keeping payload parsing local to the API.
+  app.use(json({ limit: '5mb' }));
+  app.use(urlencoded({ extended: true, limit: '5mb' }));
 
   // Real client IP behind Nginx / OpenLiteSpeed.
   app.set('trust proxy', 1);

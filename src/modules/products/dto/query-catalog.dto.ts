@@ -17,6 +17,11 @@ export class QueryCatalogDto {
   @IsString()
   q?: string;
 
+  /** High-level storefront section, independent from supplier category names. */
+  @IsOptional()
+  @IsString()
+  section?: string;
+
   @IsOptional()
   @IsEnum(PoStatus)
   status?: PoStatus;

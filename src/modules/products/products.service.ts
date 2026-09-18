@@ -250,8 +250,8 @@ export class ProductsService {
     return qb;
   }
 
-  private applySectionFilter<T>(
-    qb: SelectQueryBuilder<T>,
+  private applySectionFilter(
+    qb: SelectQueryBuilder<ProductBatchPrice>,
     section?: CatalogSection,
   ) {
     if (!section) return;

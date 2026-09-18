@@ -12,7 +12,8 @@ import {
 } from '@nestjs/common';
 
 import { ProductsService } from './products.service';
-import { CatalogSection, QueryCatalogDto } from './dto/query-catalog.dto';
+import { QueryCatalogDto } from './dto/query-catalog.dto';
+import type { CatalogSection } from './dto/query-catalog.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import {
   CatalogItem,

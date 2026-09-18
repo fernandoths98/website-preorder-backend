@@ -1,7 +1,6 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayNotEmpty,
   IsArray,
   IsEnum,
   IsInt,
@@ -67,6 +66,17 @@ export class OrderItemDto {
   qty: number;
 }
 
+export class OrderBundleDto {
+  @IsString()
+  @IsNotEmpty()
+  bundleId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  qty: number;
+}
+
 export class CreateOrderDto {
   @IsString()
   @IsNotEmpty()
@@ -94,10 +104,22 @@ export class CreateOrderDto {
   @Length(1, 255)
   note?: string;
 
+  /**
+   * Loose items. May be empty when the order is paket-only — the service
+   * rejects an order that is empty on BOTH lists, which @ArrayNotEmpty here
+   * could not express.
+   */
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(60)
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items: OrderItemDto[];
+  items: OrderItemDto[] = [];
+
+  /** Pakets. Expanded server-side into per-product lines. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => OrderBundleDto)
+  bundles?: OrderBundleDto[];
 }

@@ -3,6 +3,7 @@ import {
 } from 'typeorm';
 import { Order } from './order.entity';
 import { Product } from '../../products/entities/product.entity';
+import { Bundle } from '../../bundles/entities/bundle.entity';
 import { decimalTransformer } from '../../../common/transformers/decimal.transformer';
 
 /** Immutable price snapshot. Generated columns are read-only to the ORM. */
@@ -17,6 +18,22 @@ export class OrderItem {
   @ManyToOne(() => Order, (o) => o.items, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order?: Order;
+
+  /**
+   * Paket this line came from, NULL when the item was bought loose. The row
+   * stays per-product either way, which is why v_sourcing_sheet needed no
+   * change: paket contents land on the Thursday shopping list automatically.
+   */
+  @Column({ name: 'bundle_id', type: 'bigint', unsigned: true, nullable: true })
+  bundleId: string | null;
+
+  @ManyToOne(() => Bundle, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'bundle_id' })
+  bundle?: Bundle;
+
+  /** Snapshot — the paket name as it was sold. */
+  @Column({ name: 'bundle_name', type: 'varchar', length: 160, nullable: true })
+  bundleName: string | null;
 
   @Column({ name: 'product_id', type: 'bigint', unsigned: true })
   productId: string;

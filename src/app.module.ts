@@ -13,6 +13,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { BatchesModule } from './modules/batches/batches.module';
 import { ProductsModule } from './modules/products/products.module';
+import { BundlesModule } from './modules/bundles/bundles.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { OrdersModule } from './modules/orders/orders.module';
 
@@ -42,6 +43,7 @@ import { OrdersModule } from './modules/orders/orders.module';
     SuppliersModule,
     BatchesModule,
     ProductsModule,
+    BundlesModule,
     OrdersModule,
     ReportsModule,
   ],

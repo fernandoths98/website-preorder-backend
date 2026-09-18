@@ -59,7 +59,15 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       WA_ADMIN_PHONE: ${WA_ADMIN_PHONE}
     ports:
+      # Kept for curl from the VPS itself. Traefik reaches the container by
+      # name on kotdee-internal, not through this publish — a 127.0.0.1
+      # publish is host loopback and invisible to other containers.
       - "127.0.0.1:3000:3000"
+    networks:
+      default: {}
+      kotdee-internal:
+        aliases:
+          - wpo-api
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/v1/batches/current').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
@@ -69,3 +77,10 @@ services:
 
 volumes:
   mysql-data:
+
+networks:
+  default:
+  # Traefik's network, created by the n8n stack. External: we join it, we do
+  # not own it. Only `api` is attached — mysql stays unreachable from it.
+  kotdee-internal:
+    external: true

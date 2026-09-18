@@ -1,0 +1,44 @@
+# Traefik file-provider config for websitepreorder.online
+#
+# Install:
+#   sudo cp deploy/traefik-websitepreorder.yml /docker/n8n/dynamic/
+# Traefik watches that directory (--providers.file.watch=true), so it picks the
+# file up within seconds. No restart needed.
+#
+# Follows the same shape as kotdee-core.yml: the API router carries the higher
+# priority so PathPrefix(`/api`) wins over the catch-all web router, and only
+# the web router asks for a certificate — both hosts share it.
+http:
+  routers:
+    # --- API: priority 100 so it beats the catch-all below ---
+    wpo-api:
+      rule: (Host(`websitepreorder.online`) || Host(`www.websitepreorder.online`)) && PathPrefix(`/api`)
+      priority: 100
+      entryPoints:
+        - websecure
+      service: wpo-api
+      # No strip middleware on purpose. The app owns the /api/v1 prefix
+      # (app.setGlobalPrefix in src/main.ts); stripping it gives 404 on
+      # every endpoint.
+      tls: {}
+
+    # --- SPA: catch-all, and the router that provisions the certificate ---
+    wpo-web:
+      rule: Host(`websitepreorder.online`) || Host(`www.websitepreorder.online`)
+      priority: 10
+      entryPoints:
+        - websecure
+      service: wpo-web
+      tls:
+        certResolver: mytlschallenge
+
+  services:
+    wpo-api:
+      loadBalancer:
+        servers:
+          - url: http://wpo-api:3000
+
+    wpo-web:
+      loadBalancer:
+        servers:
+          - url: http://wpo-web:80

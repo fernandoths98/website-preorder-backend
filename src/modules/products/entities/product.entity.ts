@@ -57,6 +57,9 @@ export class Product {
   @Column({ name: 'merchant_review_note', type: 'varchar', length: 500, nullable: true })
   merchantReviewNote: string | null;
 
+  @Column({ name: 'merchant_preorder_days', type: 'int', unsigned: true, nullable: true })
+  merchantPreorderDays: number | null;
+
   @ManyToOne(() => Merchant, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'merchant_id' })
   merchant?: Merchant;

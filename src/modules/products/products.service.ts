@@ -145,16 +145,22 @@ export class ProductsService {
   }
 
   async findOneBySlug(slug: string, batchId?: number): Promise<CatalogItem> {
-    const merchantProduct = await this.productRepo.findOne({
-      where: {
-        slug,
-        isActive: true,
-        merchantStatus: MerchantProductStatus.APPROVED,
-      },
-      relations: { merchant: true },
-    });
+    // Resolve merchant products by identity first. A merchant product must never
+    // fall through to the weekly batch lookup just because it is pending/inactive.
+    const merchantProduct = await this.productRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.merchant', 'merchant')
+      .where('p.slug = :slug', { slug })
+      .andWhere('p.merchant_id IS NOT NULL')
+      .getOne();
 
-    if (merchantProduct?.merchantId) {
+    if (merchantProduct) {
+      if (
+        !merchantProduct.isActive ||
+        merchantProduct.merchantStatus !== MerchantProductStatus.APPROVED
+      ) {
+        throw new NotFoundException('Produk UMKM belum tersedia');
+      }
       return this.toMerchantCatalogItem(merchantProduct);
     }
 

@@ -61,6 +61,8 @@ services:
       NUSAPAY_QR_QUERY_PATH: ${NUSAPAY_QR_QUERY_PATH:-/api/v1/qr/qr-mpm-query}
       NUSAPAY_TIMEOUT_MS: ${NUSAPAY_TIMEOUT_MS:-20000}
       WPO_PAYMENT_CALLBACK_KEY: ${WPO_PAYMENT_CALLBACK_KEY:-}
+    volumes:
+      - ./uploads:/app/uploads
     ports:
       # Kept for curl from the VPS itself. Traefik reaches the container by
       # name on kotdee-internal, not through this publish — a 127.0.0.1

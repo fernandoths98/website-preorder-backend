@@ -54,6 +54,16 @@ export class ProductBatchPrice {
   margin: number;
 
   @Column({
+    name: 'market_reference_price',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  marketReferencePrice: number | null;
+
+  @Column({
     name: 'selling_price',
     type: 'decimal',
     precision: 12,

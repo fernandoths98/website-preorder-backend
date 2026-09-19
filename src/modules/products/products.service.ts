@@ -315,6 +315,34 @@ export class ProductsService {
     return suggestPricing(basePrice, marketReferencePrice);
   }
 
+  async applyPricingPolicy(batchId?: number) {
+    const resolved =
+      batchId ?? Number(await this.batchesService.resolveOpenBatchId());
+
+    const rows = await this.priceRepo.find({
+      where: { batchId: String(resolved) },
+    });
+
+    let changed = 0;
+    for (const row of rows) {
+      const suggestion = suggestPricing(row.basePrice, row.marketReferencePrice);
+      if (Number(row.margin) !== Number(suggestion.margin)) {
+        row.margin = suggestion.margin;
+        changed += 1;
+      }
+    }
+
+    if (changed > 0) {
+      await this.priceRepo.save(rows, { chunk: 500 });
+    }
+
+    this.logger.log(
+      `Batch ${resolved}: pricing policy applied to ${changed}/${rows.length} rows`,
+    );
+
+    return { batchId: String(resolved), total: rows.length, changed };
+  }
+
   private toCatalogItem(
     row: ProductBatchPrice,
     storefront: {

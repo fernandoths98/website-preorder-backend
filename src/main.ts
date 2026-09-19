@@ -13,6 +13,8 @@ async function bootstrap() {
   });
   const config = app.get(ConfigService);
 
+  app.useStaticAssets('/app/uploads', { prefix: '/api/v1/uploads/' });
+
   // Supplier snapshots can contain thousands of products. The default Express
   // JSON limit (~100 KB) is too small for a complete catalog snapshot, so use
   // an explicit bounded limit while keeping payload parsing local to the API.

@@ -55,9 +55,6 @@ const SECTION_CATEGORIES: Partial<Record<CatalogSection, string[]>> = {
     'Peralatan Rumah Tangga',
     'Cosmetic',
   ],
-  // KlikIndogrosir publishes this as a recommendation collection rather than
-  // a taxonomy. We surface it as the storefront "Paketan" menu.
-  paketan: ['Rekomendasi Warung Sembako'],
 };
 
 @Injectable()
@@ -299,6 +296,13 @@ export class ProductsService {
 
     if (section === 'umkm') {
       qb.andWhere('p.merchant_id IS NOT NULL');
+      return;
+    }
+
+    // "Paketan" is a bundle-only storefront section. Product queries must
+    // never fall back to the full loose-product catalog.
+    if (section === 'paketan') {
+      qb.andWhere('1 = 0');
       return;
     }
 

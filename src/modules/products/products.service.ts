@@ -1,14 +1,19 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import slugify from 'slugify';
 
 import { MerchantProductStatus, Product } from './entities/product.entity';
+import { ProductImage } from './entities/product-image.entity';
 import {
   PoStatus,
   ProductBatchPrice,
@@ -237,6 +242,70 @@ export class ProductsService {
   async softRemove(id: string): Promise<void> {
     const res = await this.productRepo.softDelete(id);
     if (!res.affected) throw new NotFoundException(`Product ${id} not found`);
+  }
+
+  async replaceProductImage(
+    id: string,
+    file: { buffer: Buffer; mimetype: string; size: number },
+  ) {
+    const product = await this.productRepo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException(`Product ${id} not found`);
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File foto produk wajib diunggah');
+    }
+    if (file.mimetype !== 'image/webp') {
+      throw new BadRequestException('Foto produk harus berformat WebP');
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      throw new BadRequestException('Foto produk maksimal 3 MB');
+    }
+
+    const dir = '/app/uploads/products';
+    const safeName = `product-${id}-${Date.now()}.webp`;
+
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, safeName), file.buffer);
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new ServiceUnavailableException(
+          'Storage upload tidak writable. Pastikan folder uploads dimiliki UID 1000.',
+        );
+      }
+      throw error;
+    }
+
+    const imageUrl = `/api/v1/uploads/products/${safeName}`;
+
+    await this.dataSource.transaction(async (em) => {
+      await em.update(Product, { id }, { imageUrl });
+
+      const primary = await em.findOne(ProductImage, {
+        where: { productId: id, isPrimary: true },
+      });
+
+      if (primary) {
+        primary.imageUrl = imageUrl;
+        await em.save(primary);
+      } else {
+        await em.save(
+          ProductImage,
+          em.create(ProductImage, {
+            productId: id,
+            imageUrl,
+            sortOrder: 0,
+            isPrimary: true,
+          }),
+        );
+      }
+    });
+
+    return { productId: id, imageUrl };
   }
 
   /**

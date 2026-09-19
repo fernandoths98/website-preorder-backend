@@ -37,6 +37,13 @@ export class MerchantBannersService {
     });
   }
 
+  async getForProduct(merchantId: string, productId: string) {
+    return this.banners.findOne({
+      where: { merchantId, productId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async submit(
     merchantId: string,
     productId: string,

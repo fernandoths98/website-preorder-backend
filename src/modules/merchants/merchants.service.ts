@@ -186,6 +186,21 @@ export class MerchantsService {
     return row;
   }
 
+  async getPortalProfile(merchantId: string) {
+    const row = await this.repo.findOne({ where: { id: merchantId } });
+    if (!row || row.status !== MerchantStatus.APPROVED) {
+      throw new UnauthorizedException('Sesi mitra tidak valid');
+    }
+
+    return {
+      id: row.id,
+      businessName: row.businessName,
+      slug: row.slug,
+      email: row.email,
+      status: row.status,
+    };
+  }
+
   findAll() {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }

@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Public } from '../../common/decorators/public.decorator';
 import { MerchantsService } from './merchants.service';
@@ -30,6 +30,11 @@ export class MerchantPortalController {
         slug: m.slug,
       },
     };
+  }
+
+  @Get('me')
+  me(@Req() req: any) {
+    return this.merchants.getPortalProfile(req.user.merchantId);
   }
 
   @Public()

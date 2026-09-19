@@ -21,6 +21,11 @@ export class MerchantBannersController {
     return this.service.listForMerchant(req.user.merchantId);
   }
 
+  @Get(':productId')
+  getForProduct(@Req() req: any, @Param('productId') productId: string) {
+    return this.service.getForProduct(req.user.merchantId, productId);
+  }
+
   @Post(':productId')
   @UseInterceptors(
     FileInterceptor('file', {

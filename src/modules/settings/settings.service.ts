@@ -12,9 +12,9 @@ const KEYS = {
 
 const DEFAULTS = {
   adminWhatsAppPhone: '085155202296',
-  storefrontShipFromLabel: 'Website Preorder',
-  storefrontFreeDeliveryText: 'Gratis antar sesuai area layanan',
-  storefrontDeliveryNote: 'Dikirim mengikuti jadwal PO setelah pembayaran terverifikasi.',
+  storefrontShipFromLabel: '',
+  storefrontFreeDeliveryText: 'Gratis ongkir hingga radius 5 km',
+  storefrontDeliveryNote: 'Untuk pesanan sekitar area layanan. Di luar radius 5 km, ongkir menyesuaikan.'
 } as const;
 
 @Injectable()

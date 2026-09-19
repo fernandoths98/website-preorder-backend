@@ -96,6 +96,42 @@ export class MerchantBannersService {
     return this.banners.save(row);
   }
 
+  async uploadFinal(
+    id: string,
+    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    width: number,
+    height: number,
+  ) {
+    const row = await this.banners.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Pengajuan banner tidak ditemukan');
+    if (!file?.buffer?.length) throw new BadRequestException('File banner final wajib diunggah');
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+      throw new BadRequestException('Banner harus JPG, PNG, atau WebP');
+    }
+    if (file.size > MAX_BYTES) {
+      throw new BadRequestException('Ukuran file banner maksimal 4 MB');
+    }
+    if (width !== BANNER_WIDTH || height !== BANNER_HEIGHT) {
+      throw new BadRequestException(
+        `Ukuran banner wajib ${BANNER_WIDTH}×${BANNER_HEIGHT} px`,
+      );
+    }
+
+    const ext =
+      file.mimetype === 'image/png'
+        ? '.png'
+        : file.mimetype === 'image/webp'
+          ? '.webp'
+          : '.jpg';
+    const dir = '/app/uploads/banners';
+    await mkdir(dir, { recursive: true });
+    const safeName = `final-banner-${id}-${Date.now()}${ext}`;
+    await writeFile(join(dir, safeName), file.buffer);
+    row.finalImageUrl = `/api/v1/uploads/banners/${safeName}`;
+    await this.banners.save(row);
+    return row;
+  }
+
   async adminList() {
     return this.banners
       .createQueryBuilder('b')

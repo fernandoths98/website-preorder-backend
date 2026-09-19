@@ -159,12 +159,20 @@ export class MerchantProductsService {
       current.merchantReviewNote = null;
       current.isActive = false;
 
-      if (dto.imageUrls?.length) {
-        current.imageUrl = dto.imageUrls[0];
+      const newImageUrls = dto.imageUrls?.length ? dto.imageUrls : null;
+      if (newImageUrls) {
+        current.imageUrl = newImageUrls[0];
+        // Avoid re-cascading the old loaded relation after it is deleted below.
+        current.images = undefined;
+      }
+
+      await em.save(Product, current);
+
+      if (newImageUrls) {
         await em.delete(ProductImage, { productId: current.id });
         await em.save(
           ProductImage,
-          dto.imageUrls.map((url, i) =>
+          newImageUrls.map((url, i) =>
             em.create(ProductImage, {
               productId: current.id,
               imageUrl: url,
@@ -174,8 +182,6 @@ export class MerchantProductsService {
           ),
         );
       }
-
-      await em.save(Product, current);
 
       return em.findOneOrFail(Product, {
         where: { id: current.id },

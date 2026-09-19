@@ -247,6 +247,7 @@ export class ProductsService {
     const qb = this.priceRepo
       .createQueryBuilder('pbp')
       .innerJoinAndSelect('pbp.product', 'p')
+      .leftJoinAndSelect('p.merchant', 'merchant')
       .where('pbp.batch_id = :batchId', { batchId })
       .andWhere('p.is_active = 1')
       // Prefer the current supplier-synced product when a legacy/manual row

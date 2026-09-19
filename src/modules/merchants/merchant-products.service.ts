@@ -7,6 +7,7 @@ import slugify from 'slugify';
 import { Product, MerchantProductStatus } from '../products/entities/product.entity';
 import { ProductImage } from '../products/entities/product-image.entity';
 import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
+import { UpdateMerchantProductDto } from './dto/update-merchant-product.dto';
 import { suggestPricing } from '../products/pricing-policy';
 
 @Injectable()
@@ -124,6 +125,60 @@ export class MerchantProductsService {
 
       return em.findOneOrFail(Product, {
         where: { id: p.id },
+        relations: { images: true },
+      });
+    });
+  }
+
+  async update(
+    merchantId: string,
+    id: string,
+    dto: UpdateMerchantProductDto,
+  ) {
+    const current = await this.products.findOne({
+      where: { id, merchantId },
+      relations: { images: true },
+    });
+    if (!current) throw new NotFoundException('Produk mitra tidak ditemukan');
+
+    return this.ds.transaction(async (em) => {
+      if (dto.name !== undefined) current.name = dto.name.trim();
+      if (dto.description !== undefined) current.description = dto.description.trim() || null;
+      if (dto.category !== undefined) current.category = dto.category.trim();
+      if (dto.unit !== undefined) current.unit = dto.unit.trim();
+      if (dto.basePrice !== undefined) {
+        current.basePrice = Number(dto.basePrice);
+        current.margin = suggestPricing(Number(dto.basePrice)).margin;
+      }
+      if (dto.preorderDays !== undefined) {
+        current.merchantPreorderDays = Number(dto.preorderDays);
+      }
+
+      // Any merchant edit goes back through review before storefront publication.
+      current.merchantStatus = MerchantProductStatus.PENDING;
+      current.merchantReviewNote = null;
+      current.isActive = false;
+
+      if (dto.imageUrls?.length) {
+        current.imageUrl = dto.imageUrls[0];
+        await em.delete(ProductImage, { productId: current.id });
+        await em.save(
+          ProductImage,
+          dto.imageUrls.map((url, i) =>
+            em.create(ProductImage, {
+              productId: current.id,
+              imageUrl: url,
+              sortOrder: i,
+              isPrimary: i === 0,
+            }),
+          ),
+        );
+      }
+
+      await em.save(Product, current);
+
+      return em.findOneOrFail(Product, {
+        where: { id: current.id },
         relations: { images: true },
       });
     });

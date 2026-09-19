@@ -7,6 +7,7 @@ import slugify from 'slugify';
 import { Product, MerchantProductStatus } from '../products/entities/product.entity';
 import { ProductImage } from '../products/entities/product-image.entity';
 import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
+import { UpdateMerchantProductDto } from './dto/update-merchant-product.dto';
 import { suggestPricing } from '../products/pricing-policy';
 
 @Injectable()
@@ -126,6 +127,51 @@ export class MerchantProductsService {
         where: { id: p.id },
         relations: { images: true },
       });
+    });
+  }
+
+  async update(
+    merchantId: string,
+    id: string,
+    dto: UpdateMerchantProductDto,
+  ) {
+    const product = await this.products.findOne({
+      where: { id, merchantId },
+      relations: { images: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produk mitra tidak ditemukan');
+    }
+
+    if (dto.name !== undefined) product.name = dto.name.trim();
+    if (dto.description !== undefined) {
+      product.description = dto.description.trim() || null;
+    }
+    if (dto.category !== undefined) product.category = dto.category.trim();
+    if (dto.unit !== undefined) product.unit = dto.unit.trim();
+
+    if (dto.basePrice !== undefined) {
+      product.basePrice = Number(dto.basePrice);
+      // Merchant edits the amount they want to receive. Service margin remains
+      // platform-controlled and is recalculated from the current pricing policy.
+      product.margin = suggestPricing(Number(dto.basePrice)).margin;
+    }
+
+    if (dto.preorderDays !== undefined) {
+      product.merchantPreorderDays = Number(dto.preorderDays);
+    }
+
+    // Merchant changes must be reviewed before returning to the storefront.
+    product.merchantStatus = MerchantProductStatus.PENDING;
+    product.merchantReviewNote = null;
+    product.isActive = false;
+
+    await this.products.save(product);
+
+    return this.products.findOneOrFail({
+      where: { id: product.id, merchantId },
+      relations: { images: true },
     });
   }
 

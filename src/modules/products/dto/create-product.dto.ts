@@ -6,7 +6,6 @@ import {
   IsString,
   IsUrl,
   Length,
-  Max,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -54,11 +53,10 @@ export class CreateProductDto {
   @Min(0)
   basePrice: number;
 
-  /** Flat micro-margin, business rule: Rp1.000 – Rp3.000. */
+  /** Platform margin in IDR. Flexible because pricing is value/market based. */
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1000)
-  @Max(3000)
+  @Min(0)
   margin: number;
 
   @IsOptional()

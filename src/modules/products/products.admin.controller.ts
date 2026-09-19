@@ -45,6 +45,12 @@ export class ProductsAdminController {
     );
   }
 
+  @Post('apply-pricing-policy')
+  @HttpCode(HttpStatus.OK)
+  applyPricingPolicy(@Body() body: { batchId?: number }) {
+    return this.productsService.applyPricingPolicy(body.batchId);
+  }
+
   @Post()
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);

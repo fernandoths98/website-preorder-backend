@@ -193,7 +193,13 @@ export class MerchantBannersService {
     const product = await this.products.findOne({ where: { id: row.productId } });
     if (!product) throw new NotFoundException('Produk tidak ditemukan');
 
-    const imageUrl = input.finalImageUrl?.trim() || row.imageUrl;
+    const imageUrl = input.finalImageUrl?.trim() || row.finalImageUrl;
+    if (!imageUrl) {
+      throw new BadRequestException(
+        'Upload banner final hasil kurasi terlebih dahulu sebelum publish',
+      );
+    }
+
     const promotion = await this.promotions.create({
       title: input.title?.trim() || product.name,
       eyebrow: input.eyebrow?.trim() || 'UMKM pilihan',

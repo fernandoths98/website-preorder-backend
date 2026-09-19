@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { mkdir, writeFile } from 'fs/promises';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { Repository } from 'typeorm';
 
 import { Product, MerchantProductStatus } from '../products/entities/product.entity';

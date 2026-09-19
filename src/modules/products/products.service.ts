@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import slugify from 'slugify';
 
-import { Product } from './entities/product.entity';
+import { MerchantProductStatus, Product } from './entities/product.entity';
 import {
   PoStatus,
   ProductBatchPrice,
@@ -110,7 +110,7 @@ export class ProductsService {
         .addSelect('COUNT(*)', 'count')
         .where('p.is_active = 1')
         .andWhere('p.merchant_id IS NOT NULL')
-        .andWhere('p.merchant_status = :approved', { approved: 'approved' })
+        .andWhere('p.merchant_status = :approved', { approved: MerchantProductStatus.APPROVED })
         .andWhere('p.category IS NOT NULL')
         .andWhere("TRIM(p.category) != ''")
         .groupBy('p.category')
@@ -149,7 +149,7 @@ export class ProductsService {
       where: {
         slug,
         isActive: true,
-        merchantStatus: 'approved' as any,
+        merchantStatus: MerchantProductStatus.APPROVED,
       },
       relations: { merchant: true },
     });

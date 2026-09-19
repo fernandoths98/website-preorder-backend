@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AdminRole } from '../../common/enums/admin-role.enum';
 import { MerchantProductsService } from './merchant-products.service';
@@ -7,6 +7,11 @@ import { MerchantProductsService } from './merchant-products.service';
 @Roles(AdminRole.OWNER, AdminRole.ADMIN)
 export class MerchantProductsAdminController {
   constructor(private readonly service: MerchantProductsService) {}
+
+  @Get()
+  list() {
+    return this.service.adminList();
+  }
 
   @Patch(':id/review')
   review(

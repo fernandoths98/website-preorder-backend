@@ -168,22 +168,60 @@ export class MerchantsService {
   }
 
   async authenticate(dto: MerchantLoginDto) {
+    const email = dto.email.trim().toLowerCase();
+
     const row = await this.repo
       .createQueryBuilder('m')
       .addSelect('m.passwordHash')
-      .where('LOWER(m.email) = :email', { email: dto.email.trim().toLowerCase() })
+      .where('LOWER(TRIM(m.email)) = :email', { email })
       .getOne();
 
-    if (
-      !row ||
-      row.status !== MerchantStatus.APPROVED ||
-      !row.passwordHash ||
-      !(await argon2.verify(row.passwordHash, dto.password).catch(() => false))
-    ) {
+    // Keep the external response generic, but make the internal state checks
+    // explicit so an activated account cannot silently fail because of
+    // whitespace/casing or a missing persisted password hash.
+    if (!row || row.status !== MerchantStatus.APPROVED || !row.passwordHash) {
+      throw new UnauthorizedException('Email atau password salah');
+    }
+
+    let passwordMatches = false;
+    try {
+      passwordMatches = await argon2.verify(row.passwordHash, dto.password);
+    } catch {
+      passwordMatches = false;
+    }
+
+    if (!passwordMatches) {
       throw new UnauthorizedException('Email atau password salah');
     }
 
     return row;
+  }
+
+  async getLoginState(emailInput: string) {
+    const email = emailInput.trim().toLowerCase();
+    const row = await this.repo
+      .createQueryBuilder('m')
+      .addSelect('m.passwordHash')
+      .addSelect('m.activationTokenHash')
+      .addSelect('m.activationExpiresAt')
+      .where('LOWER(TRIM(m.email)) = :email', { email })
+      .getOne();
+
+    if (!row) {
+      return { exists: false, email, status: null, hasPassword: false, activationPending: false };
+    }
+
+    return {
+      exists: true,
+      email: row.email,
+      status: row.status,
+      hasPassword: Boolean(row.passwordHash),
+      activationPending: Boolean(
+        row.activationTokenHash &&
+        row.activationExpiresAt &&
+        row.activationExpiresAt.getTime() > Date.now(),
+      ),
+    };
   }
 
   findAll() {

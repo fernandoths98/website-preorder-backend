@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { createHash } from 'node:crypto';
 
 import { Order, OrderStatus, DeliveryType } from './entities/order.entity';
@@ -23,6 +23,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { PaymentStatus } from './entities/payment.entity';
 import { PaymentsService, type PaymentView } from './payments.service';
 import { SettingsService } from '../settings/settings.service';
+import { MerchantProductStatus, Product } from '../products/entities/product.entity';
 
 export interface CreateOrderResult {
   orderNo: string;
@@ -54,6 +55,8 @@ export class OrdersService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(ProductBatchPrice)
     private readonly priceRepo: Repository<ProductBatchPrice>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
     private readonly batchesService: BatchesService,
     private readonly bundlesService: BundlesService,
     private readonly paymentsService: PaymentsService,
@@ -67,16 +70,35 @@ export class OrdersService {
    * quantities, so a tampered cart cannot move the price.
    */
   async create(dto: CreateOrderDto): Promise<CreateOrderResult> {
-    const batch = await this.batchesService.findOne(dto.batchId);
-    if (batch.status !== BatchStatus.OPEN) {
-      throw new ConflictException('PO minggu ini sudah ditutup');
-    }
-    const now = new Date();
-    if (now < new Date(batch.opensAt) || now > new Date(batch.closesAt)) {
-      throw new ConflictException('PO minggu ini sudah ditutup');
+    const itemIds = dto.items.map((i) => i.productId);
+    const itemProducts = itemIds.length
+      ? await this.productRepo.find({ where: { id: In(itemIds) } })
+      : [];
+    const productById = new Map(itemProducts.map((p) => [String(p.id), p]));
+
+    const hasRegularLoose = dto.items.some((item) => {
+      const product = productById.get(String(item.productId));
+      return !product?.merchantId;
+    });
+    const hasBundles = Boolean(dto.bundles?.length);
+    const needsBatch = hasRegularLoose || hasBundles;
+
+    let batch: Awaited<ReturnType<BatchesService['findOne']>> | null = null;
+    if (needsBatch) {
+      if (!dto.batchId) {
+        throw new BadRequestException('Batch PO wajib untuk produk reguler atau paketan');
+      }
+      batch = await this.batchesService.findOne(dto.batchId);
+      if (batch.status !== BatchStatus.OPEN) {
+        throw new ConflictException('PO reguler sedang ditutup');
+      }
+      const now = new Date();
+      if (now < new Date(batch.opensAt) || now > new Date(batch.closesAt)) {
+        throw new ConflictException('PO reguler sedang ditutup');
+      }
     }
 
-    const lines = await this.resolveLines(dto, batch.id);
+    const lines = await this.resolveLines(dto, batch?.id ?? null, productById);
     if (!lines.length) throw new BadRequestException('Keranjang kosong');
 
     const totals = lines.reduce(
@@ -93,7 +115,9 @@ export class OrdersService {
     // returns the original order instead of creating a twin.
     const hash = this.fingerprint(dto, lines, grandTotal);
     const existing = await this.orderRepo.findOne({
-      where: { waMessageHash: hash, batchId: batch.id },
+      where: batch
+        ? { waMessageHash: hash, batchId: batch.id }
+        : { waMessageHash: hash, batchId: IsNull() },
     });
     if (existing) {
       const payment = await this.paymentsService.createOrReuse(existing);
@@ -128,7 +152,7 @@ export class OrdersService {
       const saved = await orderRepo.save(
         orderRepo.create({
           orderNo,
-          batchId: batch.id,
+          batchId: batch?.id ?? null,
           customerId: customer.id,
           status: OrderStatus.PENDING,
           itemsCount: totals.itemsCount,
@@ -193,26 +217,56 @@ export class OrdersService {
    */
   private async resolveLines(
     dto: CreateOrderDto,
-    batchId: string,
+    batchId: string | null,
+    productById: Map<string, Product>,
   ): Promise<ResolvedLine[]> {
     const lines: ResolvedLine[] = [];
 
     // --- loose items ---
     if (dto.items.length) {
-      const rows = await this.priceRepo.find({
-        where: {
-          batchId,
-          productId: In(dto.items.map((i) => i.productId)),
-        },
-        relations: { product: true },
-      });
+      const regularIds = dto.items
+        .filter((item) => !productById.get(String(item.productId))?.merchantId)
+        .map((item) => item.productId);
+
+      const rows = batchId && regularIds.length
+        ? await this.priceRepo.find({
+            where: {
+              batchId,
+              productId: In(regularIds),
+            },
+            relations: { product: true },
+          })
+        : [];
       const byProduct = new Map(rows.map((r) => [String(r.productId), r]));
 
       for (const item of dto.items) {
+        const product = productById.get(String(item.productId));
+
+        if (product?.merchantId) {
+          if (
+            !product.isActive ||
+            product.merchantStatus !== MerchantProductStatus.APPROVED
+          ) {
+            throw new ConflictException(`${product.name} sedang tidak tersedia`);
+          }
+
+          lines.push({
+            productId: String(product.id),
+            productName: product.name,
+            unit: product.unit,
+            qty: item.qty,
+            basePrice: Number(product.basePrice),
+            margin: Number(product.margin),
+            bundleId: null,
+            bundleName: null,
+          });
+          continue;
+        }
+
         const row = byProduct.get(String(item.productId));
         if (!row?.product) {
           throw new BadRequestException(
-            `Produk ${item.productId} tidak tersedia di batch ini`,
+            `Produk ${item.productId} tidak tersedia di PO reguler saat ini`,
           );
         }
         if (row.poStatus === PoStatus.SOLD_OUT || row.poStatus === PoStatus.HIDDEN) {
@@ -238,6 +292,9 @@ export class OrdersService {
 
     // --- pakets ---
     for (const wanted of dto.bundles ?? []) {
+      if (!batchId) {
+        throw new BadRequestException('Paketan membutuhkan batch PO reguler yang aktif');
+      }
       const priced = (
         await this.bundlesService.priceByIds([wanted.bundleId], batchId)
       ).get(String(wanted.bundleId));

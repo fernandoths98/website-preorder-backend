@@ -78,9 +78,10 @@ export class OrderBundleDto {
 }
 
 export class CreateOrderDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  batchId: string;
+  batchId?: string;
 
   @IsEnum(DeliveryType)
   deliveryType: DeliveryType;

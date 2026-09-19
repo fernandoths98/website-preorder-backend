@@ -3,6 +3,8 @@ import {
   ArrayMinSize,
   IsArray,
   IsNumber,
+  IsInt,
+  Max,
   IsOptional,
   IsString,
   Length,
@@ -34,6 +36,13 @@ export class SubmitMerchantProductDto {
   @IsNumber()
   @Min(0)
   basePrice: number;
+
+  /** Lama proses preorder produk ini, independen dari batch mingguan WPO. */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  preorderDays: number;
 
   /** Opsional. Jika kosong, pricing policy WPO yang menentukan margin. */
   @IsOptional()

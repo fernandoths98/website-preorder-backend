@@ -6,6 +6,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { Payment } from './entities/payment.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { ProductBatchPrice } from '../products/entities/product-batch-price.entity';
+import { Product } from '../products/entities/product.entity';
 
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
@@ -22,7 +23,7 @@ import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, Payment, Customer, ProductBatchPrice]),
+    TypeOrmModule.forFeature([Order, OrderItem, Payment, Customer, ProductBatchPrice, Product]),
     BatchesModule,
     ProductsModule,
     BundlesModule,

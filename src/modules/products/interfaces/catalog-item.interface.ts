@@ -18,6 +18,7 @@ export interface CatalogItem {
   price: number;
   maxQty: number | null;
   poStatus: PoStatus;
+  preorderDays: number | null;
   fulfillment: CatalogFulfillment;
 }
 

@@ -96,6 +96,7 @@ export class MerchantProductsService {
         em.create(Product, {
           merchantId,
           merchantStatus: MerchantProductStatus.PENDING,
+          merchantPreorderDays: dto.preorderDays,
           sku,
           slug,
           name: dto.name,

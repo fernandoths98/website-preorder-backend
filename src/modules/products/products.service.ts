@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import slugify from 'slugify';
 
-import { Product } from './entities/product.entity';
+import { MerchantProductStatus, Product } from './entities/product.entity';
 import {
   PoStatus,
   ProductBatchPrice,
@@ -74,6 +74,10 @@ export class ProductsService {
   // ---------- Storefront ----------
 
   async findCatalog(query: QueryCatalogDto): Promise<Paginated<CatalogItem>> {
+    if (query.section === 'umkm') {
+      return this.findMerchantCatalog(query);
+    }
+
     const batchId =
       query.batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 
@@ -99,6 +103,23 @@ export class ProductsService {
     batchId?: number,
     section?: CatalogSection,
   ): Promise<Array<{ name: string; count: number }>> {
+    if (section === 'umkm') {
+      const rows = await this.productRepo
+        .createQueryBuilder('p')
+        .select('p.category', 'name')
+        .addSelect('COUNT(*)', 'count')
+        .where('p.is_active = 1')
+        .andWhere('p.merchant_id IS NOT NULL')
+        .andWhere('p.merchant_status = :approved', { approved: MerchantProductStatus.APPROVED })
+        .andWhere('p.category IS NOT NULL')
+        .andWhere("TRIM(p.category) != ''")
+        .groupBy('p.category')
+        .orderBy('p.category', 'ASC')
+        .getRawMany<{ name: string; count: string }>();
+
+      return rows.map((row) => ({ name: row.name, count: Number(row.count) }));
+    }
+
     const resolved =
       batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 
@@ -124,6 +145,19 @@ export class ProductsService {
   }
 
   async findOneBySlug(slug: string, batchId?: number): Promise<CatalogItem> {
+    const merchantProduct = await this.productRepo.findOne({
+      where: {
+        slug,
+        isActive: true,
+        merchantStatus: MerchantProductStatus.APPROVED,
+      },
+      relations: { merchant: true },
+    });
+
+    if (merchantProduct?.merchantId) {
+      return this.toMerchantCatalogItem(merchantProduct);
+    }
+
     const resolved = batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 
     const row = await this.priceRepo
@@ -239,6 +273,78 @@ export class ProductsService {
   }
 
   // ---------- internals ----------
+
+  private async findMerchantCatalog(
+    query: QueryCatalogDto,
+  ): Promise<Paginated<CatalogItem>> {
+    const qb = this.productRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.merchant', 'merchant')
+      .where('p.is_active = 1')
+      .andWhere('p.merchant_id IS NOT NULL')
+      .andWhere('p.merchant_status = :approved', { approved: 'approved' })
+      .orderBy('p.created_at', 'DESC');
+
+    if (query.category) qb.andWhere('p.category = :cat', { cat: query.category });
+
+    const keyword = query.q?.trim();
+    if (keyword) {
+      qb.andWhere(
+        `(
+          p.name LIKE :keyword
+          OR COALESCE(p.description, '') LIKE :keyword
+          OR p.sku LIKE :keyword
+        )`,
+        { keyword: `%${keyword}%` },
+      );
+    }
+
+    if (query.status === 'sold_out') {
+      qb.andWhere('1 = 0');
+    }
+
+    const [rows, total] = await qb
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit)
+      .getManyAndCount();
+
+    return this.paginate(
+      rows.map((p) => this.toMerchantCatalogItem(p)),
+      query,
+      total,
+    );
+  }
+
+  private toMerchantCatalogItem(p: Product): CatalogItem {
+    const merchant = p.merchant;
+    const shippingLabel = merchant?.freeDeliveryEnabled
+      ? `Gratis ongkir hingga ${Number(merchant.freeDeliveryRadiusKm ?? 0)} km`
+      : merchant?.deliveryMethod === 'third_party'
+        ? 'Ongkir mengikuti provider pengiriman'
+        : 'Ongkir mengikuti aturan mitra';
+
+    const preorderDays = Number(p.merchantPreorderDays ?? 2);
+
+    return {
+      productId: p.id,
+      sku: p.sku,
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      unit: p.unit,
+      imageUrl: p.imageUrl,
+      price: Number(p.sellingPrice),
+      maxQty: null,
+      poStatus: PoStatus.AVAILABLE,
+      preorderDays,
+      fulfillment: {
+        sourceType: 'merchant',
+        sourceLabel: merchant?.businessName ?? 'Mitra UMKM',
+        shippingLabel,
+        deliveryNote: `Pre-order diproses sekitar ${preorderDays} hari setelah pembayaran terverifikasi.`,
+      },
+    };
+  }
 
   private buildCatalogQuery(batchId: number, query: QueryCatalogDto) {
     const qb = this.priceRepo
@@ -392,6 +498,7 @@ export class ProductsService {
       price: row.sellingPrice,
       maxQty: row.maxQty,
       poStatus: row.poStatus,
+      preorderDays: null,
       fulfillment: {
         sourceType: merchant ? 'merchant' : 'wpo',
         sourceLabel: merchant?.businessName ?? storefront.storefrontShipFromLabel,

@@ -31,12 +31,12 @@ export class Order {
   @Column({ name: 'order_no', type: 'varchar', length: 24, unique: true })
   orderNo: string;
 
-  @Column({ name: 'batch_id', type: 'bigint', unsigned: true })
-  batchId: string;
+  @Column({ name: 'batch_id', type: 'bigint', unsigned: true, nullable: true })
+  batchId: string | null;
 
-  @ManyToOne(() => PoBatch)
+  @ManyToOne(() => PoBatch, { nullable: true })
   @JoinColumn({ name: 'batch_id' })
-  batch?: PoBatch;
+  batch?: PoBatch | null;
 
   @Column({ name: 'customer_id', type: 'bigint', unsigned: true })
   customerId: string;

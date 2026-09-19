@@ -60,6 +60,12 @@ export class Product {
   @Column({ name: 'merchant_preorder_days', type: 'int', unsigned: true, nullable: true })
   merchantPreorderDays: number | null;
 
+  @Column({ name: 'merchant_pending_update_json', type: 'json', nullable: true })
+  merchantPendingUpdateJson: Record<string, unknown> | null;
+
+  @Column({ name: 'merchant_pending_update_at', type: 'datetime', nullable: true })
+  merchantPendingUpdateAt: Date | null;
+
   @ManyToOne(() => Merchant, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'merchant_id' })
   merchant?: Merchant;

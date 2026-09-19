@@ -9,7 +9,7 @@ export class SupplierSyncProductDto {
   @IsOptional() @IsString() unit?: string;
   @IsOptional() @IsString() imageUrl?: string;
   @IsNumber() @Min(0) basePrice: number;
-  @IsOptional() @IsNumber() @Min(1000) margin?: number;
+  @IsOptional() @IsNumber() @Min(0) margin?: number;
   @IsOptional() @IsInt() @Min(1) maxQty?: number;
   @IsOptional() @IsBoolean() available?: boolean;
 }

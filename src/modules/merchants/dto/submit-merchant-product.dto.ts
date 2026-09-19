@@ -5,8 +5,9 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
+  Matches,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -44,6 +45,11 @@ export class SubmitMerchantProductDto {
   @IsArray()
   @ArrayMinSize(2)
   @ArrayMaxSize(3)
-  @IsUrl({ require_tld: false }, { each: true })
+  @IsString({ each: true })
+  @MaxLength(512, { each: true })
+  @Matches(/^(?:https?:\/\/|\/api\/v1\/uploads\/products\/)/, {
+    each: true,
+    message: 'Foto produk harus berupa URL http(s) atau hasil upload Website Preorder',
+  })
   imageUrls: string[];
 }

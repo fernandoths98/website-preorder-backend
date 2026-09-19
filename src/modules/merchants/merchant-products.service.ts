@@ -144,25 +144,51 @@ export class MerchantProductsService {
       throw new NotFoundException('Produk mitra tidak ditemukan');
     }
 
-    if (dto.name !== undefined) product.name = dto.name.trim();
-    if (dto.description !== undefined) {
-      product.description = dto.description.trim() || null;
-    }
-    if (dto.category !== undefined) product.category = dto.category.trim();
-    if (dto.unit !== undefined) product.unit = dto.unit.trim();
+    const requested = {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.description !== undefined
+        ? { description: dto.description.trim() || null }
+        : {}),
+      ...(dto.category !== undefined ? { category: dto.category.trim() } : {}),
+      ...(dto.unit !== undefined ? { unit: dto.unit.trim() } : {}),
+      ...(dto.basePrice !== undefined ? { basePrice: Number(dto.basePrice) } : {}),
+      ...(dto.preorderDays !== undefined
+        ? { preorderDays: Number(dto.preorderDays) }
+        : {}),
+    };
 
-    if (dto.basePrice !== undefined) {
-      product.basePrice = Number(dto.basePrice);
-      // Merchant edits the amount they want to receive. Service margin remains
-      // platform-controlled and is recalculated from the current pricing policy.
-      product.margin = suggestPricing(Number(dto.basePrice)).margin;
+    // Approved products stay live with the last approved data while the edit
+    // waits for review. This avoids storefront downtime for routine edits.
+    if (
+      product.merchantStatus === MerchantProductStatus.APPROVED &&
+      product.isActive
+    ) {
+      product.merchantPendingUpdateJson = requested;
+      product.merchantPendingUpdateAt = new Date();
+      product.merchantReviewNote = null;
+      await this.products.save(product);
+
+      return this.products.findOneOrFail({
+        where: { id: product.id, merchantId },
+        relations: { images: true },
+      });
     }
 
-    if (dto.preorderDays !== undefined) {
-      product.merchantPreorderDays = Number(dto.preorderDays);
+    // Products that are not live yet can keep using the normal pending flow.
+    if ('name' in requested) product.name = requested.name as string;
+    if ('description' in requested) {
+      product.description = requested.description as string | null;
+    }
+    if ('category' in requested) product.category = requested.category as string;
+    if ('unit' in requested) product.unit = requested.unit as string;
+    if ('basePrice' in requested) {
+      product.basePrice = Number(requested.basePrice);
+      product.margin = suggestPricing(Number(requested.basePrice)).margin;
+    }
+    if ('preorderDays' in requested) {
+      product.merchantPreorderDays = Number(requested.preorderDays);
     }
 
-    // Merchant changes must be reviewed before returning to the storefront.
     product.merchantStatus = MerchantProductStatus.PENDING;
     product.merchantReviewNote = null;
     product.isActive = false;
@@ -177,7 +203,46 @@ export class MerchantProductsService {
 
   async review(id: string, status: 'approved' | 'rejected', note?: string) {
     const p = await this.products.findOne({ where: { id } });
-    if (!p || !p.merchantId) throw new NotFoundException('Produk mitra tidak ditemukan');
+    if (!p || !p.merchantId) {
+      throw new NotFoundException('Produk mitra tidak ditemukan');
+    }
+
+    // Existing approved product with a staged merchant edit:
+    // keep current live data on reject, atomically promote staged data on approve.
+    if (p.merchantPendingUpdateJson) {
+      const pending = p.merchantPendingUpdateJson as {
+        name?: string;
+        description?: string | null;
+        category?: string;
+        unit?: string;
+        basePrice?: number;
+        preorderDays?: number;
+      };
+
+      if (status === 'approved') {
+        if (pending.name !== undefined) p.name = pending.name;
+        if (pending.description !== undefined) p.description = pending.description;
+        if (pending.category !== undefined) p.category = pending.category;
+        if (pending.unit !== undefined) p.unit = pending.unit;
+        if (pending.basePrice !== undefined) {
+          p.basePrice = Number(pending.basePrice);
+          p.margin = suggestPricing(Number(pending.basePrice)).margin;
+        }
+        if (pending.preorderDays !== undefined) {
+          p.merchantPreorderDays = Number(pending.preorderDays);
+        }
+        p.merchantReviewNote = null;
+      } else {
+        p.merchantReviewNote = note?.trim() || 'Perubahan produk ditolak';
+      }
+
+      p.merchantPendingUpdateJson = null;
+      p.merchantPendingUpdateAt = null;
+      p.merchantStatus = MerchantProductStatus.APPROVED;
+      p.isActive = true;
+      return this.products.save(p);
+    }
+
     p.merchantStatus =
       status === 'approved'
         ? MerchantProductStatus.APPROVED

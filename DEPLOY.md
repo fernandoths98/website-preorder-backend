@@ -161,3 +161,29 @@ Taruh di cron harian sebelum PO dibuka.
 | 404 di semua endpoint lewat domain | `/api` ke-rewrite di OLS. Hapus rewrite-nya. |
 | 502 dari OLS | Container `api` mati, atau address external app bukan `127.0.0.1:3000`. |
 | CORS error di browser | `CORS_ORIGINS` tidak sama persis dengan origin frontend (skema + host, tanpa trailing slash). |
+
+
+## Upload media permissions
+
+The API image runs as the non-root `node` user (UID/GID 1000). Because
+`./uploads:/app/uploads` is a bind mount, the host directory must be writable
+by UID 1000 before merchant product/banner uploads can succeed.
+
+```bash
+cd /var/www/backend
+sudo mkdir -p uploads/products uploads/banners
+sudo chown -R 1000:1000 uploads
+sudo chmod -R u+rwX,go+rX uploads
+```
+
+Verify from inside the API container without exposing application secrets:
+
+```bash
+docker compose exec api sh -lc '
+id
+ls -ld /app/uploads /app/uploads/products /app/uploads/banners
+test -w /app/uploads && echo "uploads writable" || echo "uploads NOT writable"
+test -w /app/uploads/products && echo "products writable" || echo "products NOT writable"
+test -w /app/uploads/banners && echo "banners writable" || echo "banners NOT writable"
+'
+```

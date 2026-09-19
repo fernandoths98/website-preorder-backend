@@ -13,6 +13,7 @@ import { OrdersAdminService } from './orders.admin.service';
 import { OrdersAdminController } from './orders.admin.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
+import { PaymentsAdminController } from './payments.admin.controller';
 
 import { BatchesModule } from '../batches/batches.module';
 import { ProductsModule } from '../products/products.module';
@@ -27,7 +28,7 @@ import { SettingsModule } from '../settings/settings.module';
     BundlesModule,
     SettingsModule,
   ],
-  controllers: [OrdersController, OrdersAdminController, PaymentsController],
+  controllers: [OrdersController, OrdersAdminController, PaymentsController, PaymentsAdminController],
   providers: [OrdersService, OrdersAdminService, PaymentsService],
   exports: [OrdersService, OrdersAdminService, PaymentsService, TypeOrmModule],
 })

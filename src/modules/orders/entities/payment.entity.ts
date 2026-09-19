@@ -57,6 +57,18 @@ export class Payment {
   })
   status: PaymentStatus;
 
+  @Column({ name: 'provider_status', type: 'varchar', length: 16, nullable: true })
+  providerStatus: string | null;
+
+  @Column({ name: 'last_provider_check_at', type: 'datetime', nullable: true })
+  lastProviderCheckAt: Date | null;
+
+  @Column({ name: 'reconciled_at', type: 'datetime', nullable: true })
+  reconciledAt: Date | null;
+
+  @Column({ name: 'reconciliation_source', type: 'varchar', length: 32, nullable: true })
+  reconciliationSource: string | null;
+
   @Column({ name: 'qr_content', type: 'text', nullable: true })
   qrContent: string | null;
 

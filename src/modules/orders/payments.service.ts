@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { Order, OrderStatus } from './entities/order.entity';
 import { Payment, PaymentStatus } from './entities/payment.entity';

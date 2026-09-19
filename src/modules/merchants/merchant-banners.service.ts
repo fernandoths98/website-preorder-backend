@@ -151,7 +151,7 @@ export class MerchantBannersService {
         'b.created_at AS createdAt',
         'p.name AS productName',
         'p.slug AS productSlug',
-        'm.business_name AS merchantName',
+        'm.businessName AS merchantName',
       ])
       .orderBy('b.created_at', 'DESC')
       .getRawMany();

@@ -9,7 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { ProductsService } from './products.service';
 import { ProductsImportService } from './products-import.service';
@@ -59,6 +63,23 @@ export class ProductsAdminController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
+  }
+
+  @Post(':id/image')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 3 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const ok = file.mimetype === 'image/webp';
+        cb(ok ? null : new BadRequestException('Foto produk harus WebP'), ok);
+      },
+    }),
+  )
+  replaceImage(
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+  ) {
+    return this.productsService.replaceProductImage(id, file);
   }
 
   @Delete(':id')

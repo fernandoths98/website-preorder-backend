@@ -20,7 +20,8 @@ export const validationSchema = Joi.object({
   WA_ADMIN_PHONE: Joi.string().default(''),
 
   NUSAPAY_GATEWAY_URL: Joi.string().uri({ allowRelative: false }).optional(),
-  NUSAPAY_QR_GENERATE_PATH: Joi.string().default('/api/qr/qr-mpm-generate'),
+  NUSAPAY_QR_GENERATE_PATH: Joi.string().default('/api/v1/qr/qr-mpm-generate'),
+  NUSAPAY_QR_QUERY_PATH: Joi.string().default('/api/v1/qr/qr-mpm-query'),
   NUSAPAY_TIMEOUT_MS: Joi.number().integer().min(1000).max(60000).default(20000),
   WPO_PAYMENT_CALLBACK_KEY: Joi.string().min(32).optional(),
 

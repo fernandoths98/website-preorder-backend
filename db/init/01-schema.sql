@@ -57,7 +57,7 @@ CREATE TABLE `products` (
   `image_url`     VARCHAR(512)    NULL,
   -- Reference pricing (the "normal" price; weekly promo lives in product_batch_prices)
   `base_price`    DECIMAL(12,2)   NOT NULL DEFAULT 0.00 COMMENT 'supplier cost',
-  `margin`        DECIMAL(12,2)   NOT NULL DEFAULT 2000.00 COMMENT 'flat micro-margin IDR',
+  `margin`        DECIMAL(12,2)   NOT NULL DEFAULT 2000.00 COMMENT 'platform/service margin IDR',
   `selling_price` DECIMAL(12,2)   AS (`base_price` + `margin`) STORED,
   `is_active`     TINYINT(1)      NOT NULL DEFAULT 1,
   `created_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -83,6 +83,7 @@ CREATE TABLE `product_batch_prices` (
   `product_id`    BIGINT UNSIGNED NOT NULL,
   `base_price`    DECIMAL(12,2)   NOT NULL COMMENT 'supplier promo price this week',
   `margin`        DECIMAL(12,2)   NOT NULL,
+  `market_reference_price` DECIMAL(12,2) NULL COMMENT 'optional market benchmark used for pricing guidance',
   `selling_price` DECIMAL(12,2)   AS (`base_price` + `margin`) STORED,
   `max_qty`       INT UNSIGNED    NULL COMMENT 'NULL = unlimited (zero inventory)',
   `po_status`     ENUM('available','limited','sold_out','hidden')

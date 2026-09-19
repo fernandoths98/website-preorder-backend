@@ -8,7 +8,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -25,9 +24,14 @@ export class BatchPriceItemDto {
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1000)
-  @Max(3000)
+  @Min(0)
   margin: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  marketReferencePrice?: number | null;
 
   @IsOptional()
   @Type(() => Number)

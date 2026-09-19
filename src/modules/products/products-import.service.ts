@@ -13,8 +13,7 @@ import type {
   ImportRowResult,
 } from './interfaces/import-result.interface';
 
-const MARGIN_MIN = 1000;
-const MARGIN_MAX = 3000;
+const MARGIN_MIN = 0;
 /** DECIMAL(12,2) holds at most 9_999_999_999.99 — reject before MySQL does. */
 const PRICE_MAX = 9_999_999_999;
 const VALID_STATUS = Object.values(PoStatus) as string[];
@@ -207,8 +206,8 @@ export class ProductsImportService {
     } else if (basePrice === 0) warnings.push('Harga modal 0');
 
     if (margin === null) errors.push('Margin bukan angka');
-    else if (margin < MARGIN_MIN || margin > MARGIN_MAX) {
-      errors.push(`Margin harus Rp${MARGIN_MIN}–Rp${MARGIN_MAX}`);
+    else if (margin < MARGIN_MIN || margin > PRICE_MAX) {
+      errors.push('Margin tidak valid');
     }
 
     const maxQty = raw.maxQty?.trim() ? this.toNumber(raw.maxQty) : null;

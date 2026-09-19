@@ -92,7 +92,7 @@ export class Product {
   })
   basePrice: number;
 
-  /** Flat micro-margin, IDR (1000–3000). */
+  /** Platform/service margin in IDR. Pricing policy may vary by product value. */
   @Column({
     type: 'decimal',
     precision: 12,

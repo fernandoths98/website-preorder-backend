@@ -1,9 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
 
-const ADMIN_WA_KEY = 'admin_whatsapp_phone';
-const DEFAULT_ADMIN_WA = '085155202296';
+const KEYS = {
+  adminWhatsAppPhone: 'admin_whatsapp_phone',
+  storefrontShipFromLabel: 'storefront_ship_from_label',
+  storefrontFreeDeliveryText: 'storefront_free_delivery_text',
+  storefrontDeliveryNote: 'storefront_delivery_note',
+} as const;
+
+const DEFAULTS = {
+  adminWhatsAppPhone: '085155202296',
+  storefrontShipFromLabel: 'Website Preorder',
+  storefrontFreeDeliveryText: 'Gratis antar sesuai area layanan',
+  storefrontDeliveryNote: 'Dikirim mengikuti jadwal PO setelah pembayaran terverifikasi.',
+} as const;
 
 @Injectable()
 export class SettingsService {
@@ -13,18 +25,56 @@ export class SettingsService {
   ) {}
 
   async getAdminSettings() {
-    return { adminWhatsAppPhone: await this.getStoredPhone() };
+    const storefront = await this.getStorefrontSettings();
+    return {
+      adminWhatsAppPhone: await this.getStoredPhone(),
+      ...storefront,
+    };
   }
 
-  async updateAdminSettings(adminWhatsAppPhone: string) {
-    const normalized = this.normalizeLocal(adminWhatsAppPhone);
-    await this.dataSource.query(
-      `INSERT INTO app_settings (setting_key, setting_value)
-       VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-      [ADMIN_WA_KEY, normalized],
-    );
-    return { adminWhatsAppPhone: normalized };
+  async updateAdminSettings(dto: UpdateSettingsDto) {
+    const updates: Array<[string, string]> = [];
+
+    if (dto.adminWhatsAppPhone !== undefined) {
+      updates.push([KEYS.adminWhatsAppPhone, this.normalizeLocal(dto.adminWhatsAppPhone)]);
+    }
+    if (dto.storefrontShipFromLabel !== undefined) {
+      updates.push([KEYS.storefrontShipFromLabel, dto.storefrontShipFromLabel.trim()]);
+    }
+    if (dto.storefrontFreeDeliveryText !== undefined) {
+      updates.push([KEYS.storefrontFreeDeliveryText, dto.storefrontFreeDeliveryText.trim()]);
+    }
+    if (dto.storefrontDeliveryNote !== undefined) {
+      updates.push([KEYS.storefrontDeliveryNote, dto.storefrontDeliveryNote.trim()]);
+    }
+
+    for (const [key, value] of updates) {
+      await this.dataSource.query(
+        `INSERT INTO app_settings (setting_key, setting_value)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [key, value],
+      );
+    }
+
+    return this.getAdminSettings();
+  }
+
+  async getStorefrontSettings() {
+    const rows = await this.getSettings([
+      KEYS.storefrontShipFromLabel,
+      KEYS.storefrontFreeDeliveryText,
+      KEYS.storefrontDeliveryNote,
+    ]);
+
+    return {
+      storefrontShipFromLabel:
+        rows.get(KEYS.storefrontShipFromLabel) ?? DEFAULTS.storefrontShipFromLabel,
+      storefrontFreeDeliveryText:
+        rows.get(KEYS.storefrontFreeDeliveryText) ?? DEFAULTS.storefrontFreeDeliveryText,
+      storefrontDeliveryNote:
+        rows.get(KEYS.storefrontDeliveryNote) ?? DEFAULTS.storefrontDeliveryNote,
+    };
   }
 
   async getWhatsAppNumber(): Promise<string> {
@@ -34,23 +84,42 @@ export class SettingsService {
 
   private async getStoredPhone(): Promise<string> {
     try {
-      const rows = await this.dataSource.query(
-        'SELECT setting_value FROM app_settings WHERE setting_key = ? LIMIT 1',
-        [ADMIN_WA_KEY],
-      );
-      if (rows?.[0]?.setting_value) return this.normalizeLocal(String(rows[0].setting_value));
+      const rows = await this.getSettings([KEYS.adminWhatsAppPhone]);
+      const value = rows.get(KEYS.adminWhatsAppPhone);
+      if (value) return this.normalizeLocal(value);
     } catch {
-      // Migration may not have been applied yet; keep checkout operational.
+      // app_settings migration may not exist during an old deployment.
     }
 
     const env = this.config.get<string>('WA_ADMIN_PHONE')?.trim();
-    return env ? this.normalizeLocal(env) : DEFAULT_ADMIN_WA;
+    return env ? this.normalizeLocal(env) : DEFAULTS.adminWhatsAppPhone;
+  }
+
+  private async getSettings(keys: string[]): Promise<Map<string, string>> {
+    try {
+      if (!keys.length) return new Map();
+      const placeholders = keys.map(() => '?').join(',');
+      const rows = await this.dataSource.query(
+        `SELECT setting_key, setting_value
+         FROM app_settings
+         WHERE setting_key IN (${placeholders})`,
+        keys,
+      );
+      return new Map(
+        (rows as Array<{ setting_key: string; setting_value: string }>).map((row) => [
+          row.setting_key,
+          row.setting_value,
+        ]),
+      );
+    } catch {
+      return new Map();
+    }
   }
 
   private normalizeLocal(value: string): string {
     let digits = value.replace(/\D/g, '');
     if (digits.startsWith('62')) digits = '0' + digits.slice(2);
-    if (!digits.startsWith('08')) return DEFAULT_ADMIN_WA;
+    if (!digits.startsWith('08')) return DEFAULTS.adminWhatsAppPhone;
     return digits;
   }
 

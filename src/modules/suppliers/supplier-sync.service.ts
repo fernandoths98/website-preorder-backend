@@ -8,6 +8,7 @@ import { SupplierSyncDto } from './dto/supplier-sync.dto';
 import { Product } from '../products/entities/product.entity';
 import { PoStatus, ProductBatchPrice } from '../products/entities/product-batch-price.entity';
 import { BatchesService } from '../batches/batches.service';
+import { suggestPricing } from '../products/pricing-policy';
 
 @Injectable()
 export class SupplierSyncService {
@@ -50,7 +51,7 @@ export class SupplierSyncService {
       }
 
       const available = row.available !== false;
-      const margin = row.margin ?? 2000;
+      const margin = row.margin ?? suggestPricing(row.basePrice).margin;
       const sku = row.sku.trim().toUpperCase();
       const category = row.category || null;
       const unit = row.unit || 'pcs';
@@ -119,7 +120,7 @@ export class SupplierSyncService {
         for (const row of dto.products) {
           seen.push(row.externalId);
           const available = row.available !== false;
-          const margin = row.margin ?? 2000;
+          const margin = row.margin ?? suggestPricing(row.basePrice).margin;
 
           let product = await products.findOne({
             where: {

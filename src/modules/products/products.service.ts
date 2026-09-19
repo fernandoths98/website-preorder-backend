@@ -22,6 +22,8 @@ import {
   Paginated,
 } from './interfaces/catalog-item.interface';
 import { BatchesService } from '../batches/batches.service';
+import { SettingsService } from '../settings/settings.service';
+import { suggestPricing } from './pricing-policy';
 
 const SECTION_CATEGORIES: Partial<Record<CatalogSection, string[]>> = {
   dapur: [
@@ -68,6 +70,7 @@ export class ProductsService {
     @InjectRepository(ProductBatchPrice)
     private readonly priceRepo: Repository<ProductBatchPrice>,
     private readonly batchesService: BatchesService,
+    private readonly settingsService: SettingsService,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -87,7 +90,12 @@ export class ProductsService {
       .take(query.limit)
       .getManyAndCount();
 
-    return this.paginate(rows.map((r) => this.toCatalogItem(r)), query, total);
+    const storefront = await this.settingsService.getStorefrontSettings();
+    return this.paginate(
+      rows.map((r) => this.toCatalogItem(r, storefront)),
+      query,
+      total,
+    );
   }
 
   async findCategories(
@@ -124,6 +132,7 @@ export class ProductsService {
     const row = await this.priceRepo
       .createQueryBuilder('pbp')
       .innerJoinAndSelect('pbp.product', 'p')
+      .leftJoinAndSelect('p.merchant', 'merchant')
       .where('pbp.batch_id = :resolved', { resolved })
       .andWhere('p.slug = :slug', { slug })
       .andWhere('p.is_active = 1')
@@ -131,7 +140,8 @@ export class ProductsService {
       .getOne();
 
     if (!row) throw new NotFoundException(`Product "${slug}" not in this PO batch`);
-    return this.toCatalogItem(row);
+    const storefront = await this.settingsService.getStorefrontSettings();
+    return this.toCatalogItem(row, storefront);
   }
 
   // ---------- Admin ----------
@@ -147,12 +157,20 @@ export class ProductsService {
       .take(query.limit)
       .getManyAndCount();
 
+    const storefront = await this.settingsService.getStorefrontSettings();
     return this.paginate(
-      rows.map((r) => ({
-        ...this.toCatalogItem(r),
-        basePrice: r.basePrice,
-        margin: r.margin,
-      })),
+      rows.map((r) => {
+        const suggestion = suggestPricing(r.basePrice, r.marketReferencePrice);
+        return {
+          ...this.toCatalogItem(r, storefront),
+          basePrice: r.basePrice,
+          margin: r.margin,
+          marketReferencePrice: r.marketReferencePrice,
+          suggestedMargin: suggestion.margin,
+          suggestedPrice: suggestion.sellingPrice,
+          pricingReason: suggestion.reason,
+        };
+      }),
       query,
       total,
     );
@@ -194,6 +212,7 @@ export class ProductsService {
       productId: string;
       basePrice: number;
       margin: number;
+      marketReferencePrice?: number | null;
       maxQty?: number | null;
       poStatus?: PoStatus;
       sortOrder?: number;
@@ -207,6 +226,7 @@ export class ProductsService {
         productId: i.productId,
         basePrice: i.basePrice,
         margin: i.margin,
+        marketReferencePrice: i.marketReferencePrice ?? null,
         maxQty: i.maxQty ?? null,
         poStatus: i.poStatus ?? PoStatus.AVAILABLE,
         sortOrder: i.sortOrder ?? 0,
@@ -227,6 +247,7 @@ export class ProductsService {
     const qb = this.priceRepo
       .createQueryBuilder('pbp')
       .innerJoinAndSelect('pbp.product', 'p')
+      .leftJoinAndSelect('p.merchant', 'merchant')
       .where('pbp.batch_id = :batchId', { batchId })
       .andWhere('p.is_active = 1')
       // Prefer the current supplier-synced product when a legacy/manual row
@@ -290,8 +311,72 @@ export class ProductsService {
     }
   }
 
-  private toCatalogItem(row: ProductBatchPrice): CatalogItem {
+  pricingSuggestion(basePrice: number, marketReferencePrice?: number | null) {
+    return suggestPricing(basePrice, marketReferencePrice);
+  }
+
+  async applyPricingPolicy(batchId?: number) {
+    const resolved =
+      batchId ?? Number(await this.batchesService.resolveOpenBatchId());
+
+    const rows = await this.priceRepo.find({
+      where: { batchId: String(resolved) },
+    });
+
+    let changed = 0;
+    for (const row of rows) {
+      const suggestion = suggestPricing(row.basePrice, row.marketReferencePrice);
+      if (Number(row.margin) !== Number(suggestion.margin)) {
+        row.margin = suggestion.margin;
+        changed += 1;
+      }
+    }
+
+    if (changed > 0) {
+      await this.priceRepo.save(rows, { chunk: 500 });
+    }
+
+    this.logger.log(
+      `Batch ${resolved}: pricing policy applied to ${changed}/${rows.length} rows`,
+    );
+
+    return { batchId: String(resolved), total: rows.length, changed };
+  }
+
+  private toCatalogItem(
+    row: ProductBatchPrice,
+    storefront: {
+      storefrontShipFromLabel: string;
+      storefrontFreeDeliveryText: string;
+      storefrontDeliveryNote: string;
+    },
+  ): CatalogItem {
     const p = row.product!;
+    const merchant = p.merchant;
+
+    const merchantShippingLabel = merchant
+      ? merchant.freeDeliveryEnabled
+        ? `Gratis ongkir hingga ${Number(merchant.freeDeliveryRadiusKm ?? 0)} km`
+        : merchant.deliveryMethod === 'third_party'
+          ? 'Ongkir mengikuti provider pengiriman'
+          : 'Ongkir mengikuti aturan mitra'
+      : storefront.storefrontFreeDeliveryText;
+
+    const merchantDeliveryNote = merchant
+      ? [
+          merchant.deliveryMethod === 'third_party'
+            ? 'Dikirim oleh partner logistik mitra.'
+            : merchant.deliveryMethod === 'both'
+              ? 'Bisa dikirim kurir mitra atau partner logistik.'
+              : 'Dikirim oleh kurir mitra.',
+          merchant.maxDeliveryRadiusKm
+            ? `Maks. jangkauan ${Number(merchant.maxDeliveryRadiusKm)} km.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : storefront.storefrontDeliveryNote;
+
     return {
       productId: p.id,
       sku: p.sku,
@@ -303,6 +388,12 @@ export class ProductsService {
       price: row.sellingPrice,
       maxQty: row.maxQty,
       poStatus: row.poStatus,
+      fulfillment: {
+        sourceType: merchant ? 'merchant' : 'wpo',
+        sourceLabel: merchant?.businessName ?? storefront.storefrontShipFromLabel,
+        shippingLabel: merchantShippingLabel,
+        deliveryNote: merchantDeliveryNote,
+      },
     };
   }
 

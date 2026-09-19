@@ -10,6 +10,7 @@ import { ProductsImportService } from './products-import.service';
 import { ProductsController } from './products.controller';
 import { ProductsAdminController } from './products.admin.controller';
 import { BatchesModule } from '../batches/batches.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { BatchesModule } from '../batches/batches.module';
     // instead of depending on a global registration in AppModule.
     CacheModule.register({ ttl: 60_000, max: 500 }),
     BatchesModule,
+    SettingsModule,
   ],
   controllers: [ProductsController, ProductsAdminController],
   providers: [ProductsService, ProductsImportService],

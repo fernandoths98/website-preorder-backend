@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 
 import { OrdersService } from './orders.service';
+import { PaymentsService } from './payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -8,12 +9,22 @@ import { Public } from '../../common/decorators/public.decorator';
 @Public()
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateOrderDto) {
     return this.ordersService.create(dto);
+  }
+
+  @Post(':orderNo/payment/recheck')
+  @HttpCode(HttpStatus.OK)
+  async recheckPayment(@Param('orderNo') orderNo: string) {
+    const order = await this.ordersService.findByOrderNo(orderNo);
+    return this.paymentsService.recheckOrder(order.id);
   }
 
   /** Success page. The order number is the only credential. */

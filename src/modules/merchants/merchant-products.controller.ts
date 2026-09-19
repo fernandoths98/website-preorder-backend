@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Param,
   Req,
   UploadedFile,
   UseInterceptors,
@@ -12,6 +14,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MerchantProductsService } from './merchant-products.service';
 import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
+import { UpdateMerchantProductDto } from './dto/update-merchant-product.dto';
 
 @Controller('merchant/products')
 export class MerchantProductsController {
@@ -37,6 +40,15 @@ export class MerchantProductsController {
   )
   uploadMedia(@Req() req: any, @UploadedFile() file: any) {
     return this.service.uploadProductImage(req.user.merchantId, file);
+  }
+
+  @Patch(':id')
+  update(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateMerchantProductDto,
+  ) {
+    return this.service.update(req.user.merchantId, id, dto);
   }
 
   @Post()

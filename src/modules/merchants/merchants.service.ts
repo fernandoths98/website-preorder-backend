@@ -56,12 +56,7 @@ export class MerchantsService {
   }
 
   async createActivation(id: string, emailOverride?: string) {
-    const row = await this.repo
-      .createQueryBuilder('m')
-      .addSelect('m.activationTokenHash')
-      .addSelect('m.activationExpiresAt')
-      .where('m.id = :id', { id })
-      .getOne();
+    const row = await this.repo.findOne({ where: { id } });
 
     if (!row) throw new NotFoundException('Mitra tidak ditemukan');
     if (row.status !== MerchantStatus.APPROVED) {
@@ -79,15 +74,37 @@ export class MerchantsService {
     }
 
     const token = randomBytes(32).toString('hex');
-    row.email = email;
-    row.activationTokenHash = this.hashToken(token);
-    row.activationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await this.repo.save(row);
+    const activationTokenHash = this.hashToken(token);
+    const activationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    try {
+      await this.repo
+        .createQueryBuilder()
+        .update(Merchant)
+        .set({
+          email,
+          activationTokenHash,
+          activationExpiresAt,
+        })
+        .where('id = :id', { id: row.id })
+        .execute();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        message.includes('activation_token_hash') ||
+        message.includes('activation_expires_at')
+      ) {
+        throw new BadRequestException(
+          'Schema aktivasi mitra belum siap. Terapkan migration 015 lalu coba lagi.',
+        );
+      }
+      throw error;
+    }
 
     return {
       token,
       email,
-      expiresAt: row.activationExpiresAt.toISOString(),
+      expiresAt: activationExpiresAt.toISOString(),
     };
   }
 

@@ -33,6 +33,13 @@ export class MerchantPortalController {
   }
 
   @Public()
+  @Post('login-state')
+  @HttpCode(HttpStatus.OK)
+  loginState(@Body() body: { email: string }) {
+    return this.merchants.getLoginState(body.email ?? '');
+  }
+
+  @Public()
   @Post('activate')
   @HttpCode(HttpStatus.OK)
   activate(@Body() dto: ActivateMerchantDto) {

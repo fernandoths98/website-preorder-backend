@@ -2,7 +2,7 @@ import { Type } from 'class-transformer'; import { IsArray, IsBoolean, IsEmail, 
 import { DeliveryFeeType, DeliveryMethod, OutsideRadiusPolicy } from '../entities/merchant.entity';
 export class CreateMerchantDto {
  @IsString() @Length(2,160) businessName:string; @IsString() @Length(2,120) ownerName:string; @IsString() @Length(8,24) phone:string;
- @IsOptional() @IsEmail() @MaxLength(160) email?:string; @IsString() @Length(2,80) category:string; @IsString() @Length(5,255) address:string;
+ @IsEmail() @MaxLength(160) email:string; @IsString() @Length(2,80) category:string; @IsString() @Length(5,255) address:string;
  @Type(()=>Number) @IsLatitude() latitude:number; @Type(()=>Number) @IsLongitude() longitude:number;
  @IsOptional() @IsString() @MaxLength(2000) description?:string; @IsOptional() @IsString() @MaxLength(160) instagram?:string;
  @IsOptional() @IsString() @MaxLength(512) logoUrl?:string; @IsEnum(DeliveryMethod) deliveryMethod:DeliveryMethod;

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { mkdir, writeFile } from 'fs/promises';
@@ -42,13 +42,26 @@ export class MerchantProductsService {
     }
 
     const dir = '/app/uploads/products';
-    await mkdir(dir, { recursive: true });
 
     const safeName = `merchant-${merchantId}-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 8)}.webp`;
 
-    await writeFile(join(dir, safeName), file.buffer);
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, safeName), file.buffer);
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new ServiceUnavailableException(
+          'Storage upload tidak writable. Perbaiki ownership folder uploads untuk user container (UID 1000).',
+        );
+      }
+      throw error;
+    }
 
     return {
       url: `/api/v1/uploads/products/${safeName}`,

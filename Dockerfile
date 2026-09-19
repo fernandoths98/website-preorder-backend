@@ -28,6 +28,7 @@ RUN apk add --no-cache tini
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
+COPY --chown=node:node assets ./assets
 
 # Never run the API as root.
 USER node

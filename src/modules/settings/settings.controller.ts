@@ -16,6 +16,6 @@ export class SettingsController {
 
   @Patch()
   update(@Body() dto: UpdateSettingsDto) {
-    return this.settingsService.updateAdminSettings(dto.adminWhatsAppPhone);
+    return this.settingsService.updateAdminSettings(dto);
   }
 }

@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import slugify from 'slugify';
 import { Product, MerchantProductStatus } from '../products/entities/product.entity';
 import { ProductImage } from '../products/entities/product-image.entity';
@@ -21,6 +23,38 @@ export class MerchantProductsService {
       relations: { images: true },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async uploadProductImage(
+    merchantId: string,
+    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File foto produk wajib diunggah');
+    }
+
+    if (file.mimetype !== 'image/webp') {
+      throw new BadRequestException('Foto produk harus dikirim dalam format WebP');
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      throw new BadRequestException('Ukuran foto produk maksimal 3 MB setelah dikompresi');
+    }
+
+    const dir = '/app/uploads/products';
+    await mkdir(dir, { recursive: true });
+
+    const safeName = `merchant-${merchantId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.webp`;
+
+    await writeFile(join(dir, safeName), file.buffer);
+
+    return {
+      url: `/api/v1/uploads/products/${safeName}`,
+      mimeType: 'image/webp',
+      size: file.size,
+    };
   }
 
   adminList() {

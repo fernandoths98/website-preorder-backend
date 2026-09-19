@@ -23,6 +23,16 @@ export class MerchantProductsService {
     });
   }
 
+  adminList() {
+    return this.products
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.images', 'images')
+      .leftJoinAndSelect('p.merchant', 'merchant')
+      .where('p.merchant_id IS NOT NULL')
+      .orderBy('p.created_at', 'DESC')
+      .getMany();
+  }
+
   async submit(merchantId: string, dto: SubmitMerchantProductDto) {
     return this.ds.transaction(async (em) => {
       const slugBase = slugify(dto.name, { lower: true, strict: true }) || 'produk';

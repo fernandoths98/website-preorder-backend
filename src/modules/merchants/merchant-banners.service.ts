@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { mkdir, writeFile } from 'fs/promises';
@@ -83,10 +84,8 @@ export class MerchantBannersService {
           : '.jpg';
 
     const dir = '/app/uploads/banners';
-    await mkdir(dir, { recursive: true });
-
     const safeName = `merchant-${merchantId}-product-${productId}-${Date.now()}${ext}`;
-    await writeFile(join(dir, safeName), file.buffer);
+    await this.writeUploadFile(dir, safeName, file.buffer);
 
     const row = this.banners.create({
       merchantId,
@@ -131,12 +130,29 @@ export class MerchantBannersService {
           ? '.webp'
           : '.jpg';
     const dir = '/app/uploads/banners';
-    await mkdir(dir, { recursive: true });
     const safeName = `final-banner-${id}-${Date.now()}${ext}`;
-    await writeFile(join(dir, safeName), file.buffer);
+    await this.writeUploadFile(dir, safeName, file.buffer);
     row.finalImageUrl = `/api/v1/uploads/banners/${safeName}`;
     await this.banners.save(row);
     return row;
+  }
+
+  private async writeUploadFile(dir: string, safeName: string, buffer: Buffer) {
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, safeName), buffer);
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error && 'code' in error
+          ? String((error as { code?: unknown }).code ?? '')
+          : '';
+      if (code === 'EACCES' || code === 'EPERM') {
+        throw new ServiceUnavailableException(
+          'Storage upload tidak writable. Perbaiki ownership folder uploads untuk user container (UID 1000).',
+        );
+      }
+      throw error;
+    }
   }
 
   async adminList() {

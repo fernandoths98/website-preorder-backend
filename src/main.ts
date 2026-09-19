@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { json, urlencoded } from 'express';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 import { AppModule } from './app.module';
 
@@ -14,7 +16,21 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   app.useStaticAssets('/app/uploads', { prefix: '/api/v1/uploads/' });
-  app.useStaticAssets('/app/assets/product-media', { prefix: '/api/v1/product-media/' });
+
+  // The curated UMKM image is stored in git as an SVG wrapper because the
+  // repository contents API is text-only. Decode the embedded WebP once at
+  // process startup and serve the real raster file to browsers.
+  const curatedDir = '/app/assets/product-media';
+  const curatedSvg = join(curatedDir, 'ayam-goreng-bawang-putih-bang-gendoet-m1.svg');
+  const curatedWebp = join(curatedDir, 'ayam-goreng-bawang-putih-bang-gendoet-m1.webp');
+  if (!existsSync(curatedWebp) && existsSync(curatedSvg)) {
+    const svg = readFileSync(curatedSvg, 'utf8');
+    const match = svg.match(/data:image\/webp;base64,([^"]+)/);
+    if (match?.[1]) {
+      writeFileSync(curatedWebp, Buffer.from(match[1], 'base64'));
+    }
+  }
+  app.useStaticAssets(curatedDir, { prefix: '/api/v1/product-media/' });
 
   // Supplier snapshots can contain thousands of products. The default Express
   // JSON limit (~100 KB) is too small for a complete catalog snapshot, so use

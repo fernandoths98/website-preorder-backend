@@ -7,6 +7,7 @@ import { Product } from './entities/product.entity';
 import { PoStatus, ProductBatchPrice } from './entities/product-batch-price.entity';
 import { BatchesService } from '../batches/batches.service';
 import type { ImportRowDto } from './dto/import-products.dto';
+import { suggestPricing } from './pricing-policy';
 import type {
   ImportCommitResult,
   ImportPreview,
@@ -194,7 +195,8 @@ export class ProductsImportService {
     if (sku) seen.add(sku);
 
     const basePrice = this.toNumber(raw.basePrice);
-    const margin = this.toNumber(raw.margin);
+    const rawMarginText = raw.margin?.trim() ?? '';
+    let margin = this.toNumber(raw.margin);
 
     if (basePrice === null) errors.push('Harga modal bukan angka');
     else if (basePrice < 0) errors.push('Harga modal negatif');
@@ -205,8 +207,14 @@ export class ProductsImportService {
       );
     } else if (basePrice === 0) warnings.push('Harga modal 0');
 
-    if (margin === null) errors.push('Margin bukan angka');
-    else if (margin < MARGIN_MIN || margin > PRICE_MAX) {
+    if (!rawMarginText && basePrice !== null && basePrice >= 0 && basePrice <= PRICE_MAX) {
+      margin = suggestPricing(basePrice).margin;
+      warnings.push(
+        `Margin kosong: dihitung otomatis Rp${margin.toLocaleString('id-ID')} dari pricing policy.`,
+      );
+    } else if (margin === null) {
+      errors.push('Margin bukan angka');
+    } else if (margin < MARGIN_MIN || margin > PRICE_MAX) {
       errors.push('Margin tidak valid');
     }
 

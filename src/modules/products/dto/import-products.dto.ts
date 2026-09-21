@@ -25,6 +25,12 @@ export class ImportRowDto {
   @IsOptional() @IsString() margin?: string;
   @IsOptional() @IsString() maxQty?: string;
   @IsOptional() @IsString() poStatus?: string;
+  @IsOptional() @IsString() supplierId?: string;
+  @IsOptional() @IsString() externalId?: string;
+  @IsOptional() @IsString() available?: string;
+  @IsOptional() @IsString() source?: string;
+  @IsOptional() @IsString() collectedAt?: string;
+  @IsOptional() @IsString() snapshotComplete?: string;
 }
 
 export class PreviewImportDto {

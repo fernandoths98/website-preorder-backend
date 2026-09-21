@@ -19,6 +19,10 @@ export interface ImportRowResult {
     sellingPrice: number;
     maxQty: number | null;
     poStatus: string;
+    supplierId: string | null;
+    supplierExternalId: string | null;
+    supplierAvailable: boolean | null;
+    collectedAt: string | null;
   } | null;
   /** Current values when the SKU already exists, for a before/after diff. */
   existing: { name: string; basePrice: number; margin: number } | null;

@@ -7,6 +7,7 @@ import { Product } from './entities/product.entity';
 import { PoStatus, ProductBatchPrice } from './entities/product-batch-price.entity';
 import { BatchesService } from '../batches/batches.service';
 import type { ImportRowDto } from './dto/import-products.dto';
+import { suggestPricing } from './pricing-policy';
 import type {
   ImportCommitResult,
   ImportPreview,
@@ -125,6 +126,15 @@ export class ProductsImportService {
           product.basePrice = d.basePrice;
           product.margin = d.margin;
           if (d.imageUrl) product.imageUrl = d.imageUrl;
+          if (d.supplierId) product.supplierId = d.supplierId;
+          if (d.supplierExternalId) product.supplierExternalId = d.supplierExternalId;
+          if (d.supplierAvailable !== null) {
+            product.supplierAvailable = d.supplierAvailable;
+          }
+          if (d.collectedAt) product.supplierLastSeenAt = new Date(d.collectedAt);
+          if (d.supplierId || d.supplierExternalId) {
+            product.supplierLastSyncedAt = new Date();
+          }
           await products.save(product);
           updated += 1;
         } else {
@@ -139,6 +149,12 @@ export class ProductsImportService {
               basePrice: d.basePrice,
               margin: d.margin,
               isActive: true,
+              supplierId: d.supplierId,
+              supplierExternalId: d.supplierExternalId,
+              supplierAvailable: d.supplierAvailable ?? true,
+              supplierLastSeenAt: d.collectedAt ? new Date(d.collectedAt) : null,
+              supplierLastSyncedAt:
+                d.supplierId || d.supplierExternalId ? new Date() : null,
             }),
           );
           created += 1;
@@ -194,7 +210,8 @@ export class ProductsImportService {
     if (sku) seen.add(sku);
 
     const basePrice = this.toNumber(raw.basePrice);
-    const margin = this.toNumber(raw.margin);
+    const rawMarginText = raw.margin?.trim() ?? '';
+    let margin = this.toNumber(raw.margin);
 
     if (basePrice === null) errors.push('Harga modal bukan angka');
     else if (basePrice < 0) errors.push('Harga modal negatif');
@@ -205,17 +222,51 @@ export class ProductsImportService {
       );
     } else if (basePrice === 0) warnings.push('Harga modal 0');
 
-    if (margin === null) errors.push('Margin bukan angka');
-    else if (margin < MARGIN_MIN || margin > PRICE_MAX) {
+    if (!rawMarginText && basePrice !== null && basePrice >= 0 && basePrice <= PRICE_MAX) {
+      margin = suggestPricing(basePrice).margin;
+      warnings.push(
+        `Margin kosong: dihitung otomatis Rp${margin.toLocaleString('id-ID')} dari pricing policy.`,
+      );
+    } else if (margin === null) {
+      errors.push('Margin bukan angka');
+    } else if (margin < MARGIN_MIN || margin > PRICE_MAX) {
       errors.push('Margin tidak valid');
     }
 
     const maxQty = raw.maxQty?.trim() ? this.toNumber(raw.maxQty) : null;
+
+    const supplierIdText = raw.supplierId?.trim() ?? '';
+    const supplierId = supplierIdText ? this.toNumber(supplierIdText) : null;
+    if (supplierIdText && (supplierId === null || supplierId < 1)) {
+      errors.push('supplierId tidak valid');
+    }
+
+    const supplierExternalId = raw.externalId?.trim() || null;
+
+    const availableText = raw.available?.trim().toLowerCase() ?? '';
+    let supplierAvailable: boolean | null = null;
+    if (availableText) {
+      if (['true', '1', 'yes', 'y', 'available'].includes(availableText)) {
+        supplierAvailable = true;
+      } else if (['false', '0', 'no', 'n', 'unavailable', 'sold_out'].includes(availableText)) {
+        supplierAvailable = false;
+      } else {
+        errors.push(`available tidak dikenal: ${raw.available}`);
+      }
+    }
+
+    const collectedAtText = raw.collectedAt?.trim() || '';
+    const collectedAt = collectedAtText ? new Date(collectedAtText) : null;
+    if (collectedAtText && Number.isNaN(collectedAt?.getTime())) {
+      errors.push('collectedAt bukan tanggal yang valid');
+    }
     if (raw.maxQty?.trim() && (maxQty === null || maxQty < 1)) {
       errors.push('Maks qty harus bilangan bulat ≥ 1');
     }
 
-    const poStatus = (raw.poStatus ?? 'available').trim().toLowerCase();
+    const derivedPoStatus =
+      supplierAvailable === false ? PoStatus.SOLD_OUT : PoStatus.AVAILABLE;
+    const poStatus = (raw.poStatus?.trim() || derivedPoStatus).toLowerCase();
     if (!VALID_STATUS.includes(poStatus)) {
       errors.push(`Status PO tidak dikenal: ${poStatus}`);
     }
@@ -267,6 +318,10 @@ export class ProductsImportService {
         sellingPrice: basePrice! + margin!,
         maxQty,
         poStatus,
+        supplierId: supplierId ? String(supplierId) : null,
+        supplierExternalId,
+        supplierAvailable,
+        collectedAt: collectedAt ? collectedAt.toISOString() : null,
       },
       existing: prior
         ? { name: prior.name, basePrice: prior.basePrice, margin: prior.margin }

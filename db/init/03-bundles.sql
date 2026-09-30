@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS `bundles` (
   `name`          VARCHAR(160)    NOT NULL,
   `tagline`       VARCHAR(200)    NULL COMMENT 'one-liner on the card',
   `description`   TEXT            NULL,
+  `plan`          JSON            NULL,
   `target_market` VARCHAR(160)    NULL COMMENT 'anak kost, keluarga kecil, ...',
   `image_url`     VARCHAR(512)    NULL,
   -- Flat margin for the WHOLE paket, IDR. Keep it at or below the sum of the

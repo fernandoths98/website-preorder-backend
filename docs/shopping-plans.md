@@ -19,11 +19,13 @@ Jalankan installer **sebelum membangun API baru**, karena API baru membutuhkan k
 
   cd /var/www/websitepreorder/frontend
   git pull --ff-only origin main
-  npm ci
-  npm run build
+  docker run --rm -v "$PWD:/app" -w /app node:24-alpine \
+    sh -c 'npm ci && npm run build'
   docker compose up -d web
 )
 ```
+
+Frontend dibangun menggunakan Docker Node 24 agar tidak memakai Node 18 bawaan VPS. Folder `dist` tetap ditulis ke direktori frontend yang dilayani Nginx.
 
 Installer memilih batch yang sama dengan katalog, mempublish record supplier aktif/tersedia yang belum memiliki harga batch menggunakan harga dan margin master. Record harga batch yang sudah ada, termasuk status hidden/sold_out, tidak ditimpa. Produk yang dipakai oleh paket lengkap juga dipublish jika diperlukan. Produk nonaktif, terhapus, UMKM, stok supplier kosong, atau gambar seed demo tidak diaktifkan.
 

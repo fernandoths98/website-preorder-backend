@@ -2,6 +2,8 @@
 // Standalone: pipe into the API container; uses its mysql2 and DB environment.
 const mass = (key, label, match, target, min = 100, max = 5000, preference) => ({key,label,match,target,min,max,family:'mass',preference});
 const volume = (key,label,match,target,min=100,max=2000) => ({key,label,match,target,min,max,family:'volume'});
+// Fresh ingredients must not resolve to processed food that mentions a vegetable.
+const freshName = n => !/crisps?|chips?|pringles|keripik|snack|bubuk|powder|tepung|flour|roti|bread|biskuit|biscuit|cracker|jus|juice|saus|sauce|bumbu|racik|kaldu|kering|dried|goreng|fried|frozen|nugget|soup|puree|pasta|paste|pickle|acar|kaleng|canned|\bklg\b/.test(n);
 const RULES = {
   rice: mass('rice','Beras', n => /\bberas\b/.test(n) && !/tepung|bubur|ketan|hitam|organik/.test(n),2500,1000,5000,n => /merah/.test(n)?1:0),
   oil: volume('oil','Minyak goreng',n => /minyak\s+goreng|cooking\s+oil/.test(n),1000,450,2000),
@@ -11,11 +13,11 @@ const RULES = {
   chicken: mass('chicken','Ayam mentah 700–1.000 g',n=>/\bayam\b|chicken/.test(n)&&!/bumbu|racik|goreng|kecap|nugget|sosis|kaldu|mie|mi\b|bubur|abon|tepung|keripik|bakso|matang|snack/.test(n),1000,700,1000),
   fried: mass('fried','Bumbu racik ayam goreng',n=>/bumbu|racik/.test(n)&&/ayam\s+goreng/.test(n),25,15,100),
   soy: volume('soy','Kecap manis',n=>/kecap\s+manis/.test(n),100,60,600),
-  garlic: mass('garlic','Bawang putih',n=>/bawang\s+putih/.test(n)&&!/bubuk|goreng|keripik/.test(n),100,50,1000),
-  shallot: mass('shallot','Bawang merah',n=>/bawang\s+merah/.test(n)&&!/bubuk|goreng|keripik/.test(n),100,50,1000),
-  carrot: mass('carrot','Wortel',n=>/wortel|carrot/.test(n)&&!/jus|juice|bubuk|snack/.test(n),200,100,1000),
-  potato: mass('potato','Kentang',n=>/kentang|potato/.test(n)&&!/keripik|chips|goreng|frozen|tepung/.test(n),300,100,1000),
-  cabbage: mass('cabbage','Kol/kubis',n=>/\bkol\b|kubis/.test(n),200,100,1000),
+  garlic: mass('garlic','Bawang putih',n=>(/bawang\s+putih|\bgarlic\b/.test(n))&&freshName(n),100,50,1000),
+  shallot: mass('shallot','Bawang merah',n=>(/bawang\s+merah|\bshallots?\b/.test(n))&&freshName(n),100,50,1000),
+  carrot: mass('carrot','Wortel',n=>/wortel|\bcarrots?\b/.test(n)&&freshName(n),200,100,1000),
+  potato: mass('potato','Kentang',n=>/kentang|\bpotatoes?\b|\bpotato\b/.test(n)&&freshName(n),300,100,1000),
+  cabbage: mass('cabbage','Kol/kubis',n=>/\bkol\b|kubis|\bcabbage\b/.test(n)&&freshName(n),200,100,1000),
   soup: mass('soup','Bumbu racik sayur sop',n=>/bumbu|racik/.test(n)&&/sayur\s+sop|sup\s+sayur/.test(n),20,10,100),
 };
 const STORAGE = 'Paket dikirim sekali bersama batch preorder. Pisahkan bahan per sesi; simpan ayam mentah dalam freezer sampai akan dimasak. Sayuran sebaiknya dimasak segera setelah diterima. Paket bulanan bukan pengiriman mingguan atau langganan otomatis.';

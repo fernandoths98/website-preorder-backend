@@ -15,7 +15,7 @@ function service(products: any = {}, bundles: any = {}, items: any = {}, pricing
 
 describe('bundle editor catalog', () => {
   it('searches master products without batch publication and pages beyond 100 products', async () => {
-    const qb = builder([{ id: '2501', name: 'Sabun Cuci Piring', sku: 'CP', unit: 'pcs', basePrice: '9000', margin: '2000', isActive: true, deletedAt: null, merchantId: null }], 2712);
+    const qb = builder([{ id: '2501', name: 'Sabun Cuci Piring', sku: 'CP', unit: 'pcs', basePrice: '9000', margin: '2000', isActive: true, supplierAvailable: true, deletedAt: null, merchantId: null }], 2712);
     const api = service({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
     const result = await api.findProducts(Object.assign(new QueryBundleProductsDto(), { q: 'cuci', page: 3, limit: 50 }));
     expect(qb.skip).toHaveBeenCalledWith(100);
@@ -40,7 +40,7 @@ describe('bundle editor catalog', () => {
       adminItems: [{ productId: '140', qty: 2, sortOrder: 3 }] });
   });
   it('can deactivate a bundle and return its saved contents without a post-write 404', async () => {
-    const bundle = { id: '1', slug: 'kost', name: 'Kost', isActive: true, sortOrder: 7, margin: 1000 };
+    const bundle = { id: '1', slug: 'kost', name: 'Kost', isActive: true, supplierAvailable: true, sortOrder: 7, margin: 1000 };
     const items = [{ bundleId: '1', productId: '140', qty: 2, sortOrder: 1 }];
     const saved = jest.fn().mockResolvedValue(bundle);
     const api = service({ find: jest.fn().mockResolvedValue([{ id: '140', margin: 2000 }]) },

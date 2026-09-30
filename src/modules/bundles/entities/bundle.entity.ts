@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { BundlePlan } from '../interfaces/bundle-plan.interface';
 import { BundleItem } from './bundle-item.entity';
 import { decimalTransformer } from '../../../common/transformers/decimal.transformer';
 
@@ -41,6 +42,9 @@ export class Bundle {
 
   @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl: string | null;
+
+  @Column({ type: 'json', nullable: true })
+  plan: BundlePlan | null;
 
   /** Flat margin for the whole paket, IDR — not per member item. */
   @Column({

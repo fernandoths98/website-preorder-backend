@@ -56,7 +56,7 @@ export class BundlesAdminService {
       ...(priced.get(String(b.id)) ?? {
         bundleId: String(b.id), slug: b.slug, name: b.name,
         tagline: b.tagline, description: b.description, targetMarket: b.targetMarket,
-        imageUrl: b.imageUrl, itemsCount: 0, modal: 0, margin: b.margin,
+        plan: b.plan, complete: false, imageUrl: b.imageUrl, itemsCount: 0, modal: 0, margin: b.margin,
         price: 0, loosePrice: 0, savings: 0, maxQty: b.maxQty,
         poStatus: 'hidden' as BundleView['poStatus'],
         blockedBy: b.isActive ? ['Paket belum punya isi yang tersedia'] : ['Paket nonaktif'],
@@ -92,13 +92,14 @@ export class BundlesAdminService {
       data: products.map((p) => ({
         productId: String(p.id), name: p.name, sku: p.sku, unit: p.unit,
         basePrice: Number(p.basePrice), margin: Number(p.margin),
-        selectable: p.isActive && !p.deletedAt && !p.merchantId,
+        selectable: p.isActive && !p.deletedAt && !p.merchantId && p.supplierAvailable,
       })),
       meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
     };
   }
 
   async create(dto: CreateBundleDto): Promise<BundleView> {
+    this.assertPlanSane(dto.plan);
     const slug = dto.slug ?? slugify(dto.name, { lower: true, strict: true });
 
     const clash = await this.bundleRepo.findOne({
@@ -114,6 +115,7 @@ export class BundlesAdminService {
       const bundle = await manager.getRepository(Bundle).save(
         manager.getRepository(Bundle).create({
           slug,
+          plan: dto.plan ?? null,
           name: dto.name,
           tagline: dto.tagline ?? null,
           description: dto.description ?? null,
@@ -136,6 +138,7 @@ export class BundlesAdminService {
     const bundle = await this.bundleRepo.findOne({ where: { id } });
     if (!bundle) throw new NotFoundException(`Paket ${id} tidak ditemukan`);
 
+    this.assertPlanSane(dto.plan === undefined ? bundle.plan : dto.plan);
     if (dto.items) await this.assertProductsExist(dto.items.map((i) => i.productId));
 
     // Margin and contents can each change alone, so validate the combination
@@ -150,6 +153,7 @@ export class BundlesAdminService {
 
     await this.dataSource.transaction(async (manager) => {
       Object.assign(bundle, {
+        ...(dto.plan !== undefined && { plan: dto.plan }),
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.slug !== undefined && { slug: dto.slug }),
         ...(dto.tagline !== undefined && { tagline: dto.tagline }),
@@ -177,6 +181,11 @@ export class BundlesAdminService {
   }
 
   // ---------- internals ----------
+
+  private assertPlanSane(plan?: import('./interfaces/bundle-plan.interface').BundlePlan | null) {
+    if (plan?.category === 'kulkas' && !plan.recipe) throw new BadRequestException('Paket kulkas harus memiliki panduan resep');
+    if (plan?.category !== 'kulkas' && plan?.recipe) throw new BadRequestException('Resep hanya untuk paket kulkas');
+  }
 
   private async replaceItems(
     repo: Repository<BundleItem>,

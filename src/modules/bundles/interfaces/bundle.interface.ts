@@ -1,3 +1,4 @@
+import type { BundlePlan } from './bundle-plan.interface';
 import { PoStatus } from '../../products/entities/product-batch-price.entity';
 
 export interface BundleMemberView {
@@ -15,6 +16,8 @@ export interface BundleMemberView {
 }
 
 export interface BundleView {
+  plan: BundlePlan | null;
+  complete: boolean;
   bundleId: string;
   slug: string;
   name: string;

@@ -122,7 +122,8 @@ export class BundlesService {
     return bundles
       .map((b) => {
         const rows = membersByBundle.get(b.id) ?? [];
-        if (!rows.length) return null;
+        const unresolved = b.plan?.missing ?? [];
+        const complete = rows.length > 0 && unresolved.length === 0;
 
         const pricing = priceBundle(
           rows.map<PricingMember>((r) => ({
@@ -142,7 +143,8 @@ export class BundlesService {
             STATUS_RANK[r.poStatus] > STATUS_RANK[acc] ? r.poStatus : acc,
           PoStatus.AVAILABLE,
         );
-        const poStatus = missing.length ? PoStatus.SOLD_OUT : worst;
+        const insufficient = rows.some(r => r.maxQty != null && Number(r.maxQty) < r.qty);
+        const poStatus = !complete || insufficient || missing.length ? PoStatus.SOLD_OUT : worst;
 
         const members: BundleMemberView[] = rows.map((r) => ({
           productId: r.productId,
@@ -157,6 +159,8 @@ export class BundlesService {
         }));
 
         const view: BundleView = {
+          plan: b.plan ?? null,
+          complete,
           bundleId: b.id,
           slug: b.slug,
           name: b.name,
@@ -170,9 +174,12 @@ export class BundlesService {
           price: pricing.price,
           loosePrice: pricing.loosePrice,
           savings: pricing.savings,
-          maxQty: b.maxQty,
+          maxQty: Math.min(b.maxQty ?? 99, ...rows.filter(r => r.maxQty != null).map(r => Math.floor(Number(r.maxQty) / r.qty))),
           poStatus,
           blockedBy: [
+            ...rows.filter(r => r.maxQty != null && Number(r.maxQty) < r.qty).map(r => `${r.name} (jumlah tidak mencukupi)`),
+            ...unresolved.map(name => `${name} (belum tersedia di katalog)`),
+            ...(!rows.length && !unresolved.length ? ['Isi paket belum dikonfigurasi'] : []),
             ...missing.map((m) => `${m.name} (belum dipublish ke batch ini)`),
             ...rows
               .filter((r) => r.published && r.poStatus !== PoStatus.AVAILABLE)
@@ -193,6 +200,7 @@ export class BundlesService {
   private async loadMembers(bundleIds: string[], batchId: string) {
     const rows = await this.itemRepo
       .createQueryBuilder('bi')
+      .withDeleted()
       .innerJoin('bi.product', 'p')
       .leftJoin(
         ProductBatchPrice,
@@ -201,8 +209,6 @@ export class BundlesService {
         { batchId },
       )
       .where('bi.bundle_id IN (:...bundleIds)', { bundleIds })
-      .andWhere('p.is_active = 1')
-      .andWhere('p.deleted_at IS NULL')
       .orderBy('bi.sort_order', 'ASC')
       .select([
         'bi.bundle_id  AS bundleId',
@@ -215,7 +221,8 @@ export class BundlesService {
         'p.image_url   AS imageUrl',
         'COALESCE(pbp.base_price, p.base_price) AS basePrice',
         'COALESCE(pbp.margin, p.margin)         AS margin',
-        'COALESCE(pbp.po_status, :fallback)     AS poStatus',
+        `CASE WHEN p.is_active=0 OR p.deleted_at IS NOT NULL OR p.supplier_available=0 THEN 'sold_out' ELSE COALESCE(pbp.po_status, :fallback) END AS poStatus`,
+        'pbp.max_qty AS maxQty',
         'pbp.id IS NOT NULL                     AS published',
       ])
       .setParameter('fallback', PoStatus.AVAILABLE)
@@ -232,6 +239,7 @@ export class BundlesService {
         margin: string;
         poStatus: PoStatus;
         published: number;
+        maxQty: number | null;
       }>();
 
     const grouped = new Map<string, Array<Omit<(typeof rows)[number], 'basePrice' | 'margin' | 'published'> & {

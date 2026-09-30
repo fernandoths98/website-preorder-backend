@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsBoolean,
   IsInt,
   IsNumber,
@@ -14,6 +15,22 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+
+export class BundleRecipeDto {
+  @IsInt() @Min(1) @Max(50) servings: number;
+  @IsInt() @Min(1) @Max(31) sessions: number;
+  @IsInt() @Min(1) @Max(600) minutes: number;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(500, { each: true }) ingredients: string[];
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(500, { each: true }) pantry: string[];
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(1000, { each: true }) steps: string[];
+  @IsString() @MaxLength(1000) storage: string;
+}
+export class BundlePlanDto {
+  @IsIn(['weekly', 'monthly']) period: 'weekly' | 'monthly';
+  @IsIn(['dapur', 'cleaning', 'kulkas']) category: 'dapur' | 'cleaning' | 'kulkas';
+  @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(500, { each: true }) missing: string[];
+  @IsOptional() @ValidateNested() @Type(() => BundleRecipeDto) recipe?: BundleRecipeDto;
+}
 
 export class BundleItemDto {
   @IsString()
@@ -30,6 +47,11 @@ export class BundleItemDto {
 }
 
 export class CreateBundleDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BundlePlanDto)
+  plan?: BundlePlanDto | null;
+
   @IsString()
   @MaxLength(160)
   name: string;

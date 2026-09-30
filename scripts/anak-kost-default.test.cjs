@@ -25,6 +25,29 @@ test('small staple packs aggregate to the requested total', () => {
   const plan = buildPlan(products);
   assert.deepEqual(plan.items.slice(0, 3).map(i => i.qty), [5, 3, 2]);
 });
+test('uses available red rice when production white rice is supplier-unavailable', () => {
+  const rows = catalog().filter(p => p.id !== '1');
+  rows.push(product(350, 'TOPI KOKI BERAS SETRA RAMOS SAK 5kg', 74500, { supplier_available: 0 }),
+    product(1, 'Beras Premium 5 kg', 62000, { is_active: 0, deleted_at: new Date() }),
+    product(67, 'Fs Beras Merah Pch 1 kg', 25500),
+    product(68, 'Fs Beras Ketan Putih Pch 1 kg', 35500),
+    product(96, 'Sumo Beras Khusus Merah Sak 5 kg', 94500));
+  const rice = buildPlan(rows).items[0];
+  assert.equal(rice.product.id, '96'); assert.equal(rice.qty, 1);
+  assert.equal(rice.basePrice, 94500);
+  rows.find(p => p.id === '96').supplier_available = 0;
+  const small = buildPlan(rows).items[0];
+  assert.equal(small.product.id, '67'); assert.equal(small.qty, 5);
+});
+test('prefers available white rice over red rice even with smaller white packs', () => {
+  const rows = catalog(); rows[0].name = 'Beras Ramos 1kg';
+  rows.push(product(96, 'Sumo Beras Khusus Merah Sak 5kg', 1));
+  assert.equal(buildPlan(rows).items[0].product.id, '1');
+  rows[0].supplier_available = 0;
+  rows[6].po_status = 'sold_out'; rows[6].published_id = '96';
+  rows[6].batch_base_price = 1; rows[6].batch_margin = 2000;
+  assert.throws(() => buildPlan(rows), /Beras/);
+});
 test('recognizes decimal commas, compact units and explicit per-kg units', () => {
   assert.deepEqual(sizes({ name: 'Minyak 0,9L', unit: 'pcs' }), [{ amount: 900, family: 'volume' }]);
   assert.deepEqual(sizes({ name: 'Beras putih', unit: 'Kilogram' }), [{ amount: 1000, family: 'mass' }]);

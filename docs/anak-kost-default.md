@@ -6,7 +6,7 @@ Default:
 
 | Kebutuhan | Jumlah |
 | --- | --- |
-| Beras putih | sekitar 5 kg; bisa beberapa kemasan 1 kg |
+| Beras | sekitar 5 kg; beras putih diutamakan, beras merah jika putih tidak tersedia |
 | Minyak goreng | sekitar 1 L; dibulatkan ke kemasan penuh |
 | Gula pasir | sekitar 1 kg |
 | Mi instan | 6 bungkus satuan |
@@ -49,4 +49,4 @@ node scripts/anak-kost-default.test.cjs
 node --check scripts/apply-anak-kost-default.cjs
 ```
 
-11 tes mencakup komposisi paket, ukuran/jumlah, produk cleaning yang salah, data demo, stok/status/limit, harga batch, margin, urutan deterministik, preview tanpa write, apply/publish, pemasangan ulang, backup dan rollback. Query database diuji melalui adapter mock; script belum dijalankan pada database produksi.
+13 tes mencakup komposisi paket, fallback beras merah sesuai ketersediaan katalog, prioritas beras putih, ukuran/jumlah, produk cleaning yang salah, data demo, stok/status/limit, harga batch, margin, urutan deterministik, preview tanpa write, apply/publish, pemasangan ulang, backup dan rollback. Query database diuji melalui adapter mock; script belum dijalankan pada database produksi.

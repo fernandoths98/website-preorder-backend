@@ -7,7 +7,8 @@ const DEMO_SKUS = new Set(['MYK-GRG-1', 'MYK-GRG-2', 'GLA-PSR-500', 'GLA-PSR-1',
 const BULK = /\b(dus|karton|carton|ctn|bal|lusin|multipack|isi\s*\d+)\b|\d+\s*[x×]\s*\d+/i;
 const RULES = [
   { key: 'beras', label: 'Beras sekitar 5 kg', family: 'mass', target: 5000, min: 1000, max: 5000, aggregate: true,
-    match: n => /\bberas\b/.test(n) && !/tepung|bubur|ketan|merah|hitam|organik/.test(n) },
+    match: n => /\bberas\b/.test(n) && !/tepung|bubur|ketan|hitam|organik/.test(n),
+    preference: n => /\bmerah\b/.test(n) ? 1 : 0 },
   { key: 'minyak', label: 'Minyak goreng sekitar 1 L', family: 'volume', target: 1000, min: 450, max: 1000, aggregate: true,
     match: n => /minyak\s+goreng|cooking\s+oil/.test(n) },
   { key: 'gula', label: 'Gula pasir sekitar 1 kg', family: 'mass', target: 1000, min: 500, max: 1000, aggregate: true,
@@ -56,11 +57,12 @@ function buildPlan(products) {
           const basePrice = Number(p.published_id ? p.batch_base_price : p.base_price);
           const margin = Number(p.published_id ? p.batch_margin : p.margin);
           return { product: p, qty, size, basePrice, margin,
+            preference: rule.preference ? rule.preference(String(p.name).toLowerCase()) : 0,
             score: Math.abs(size.amount - rule.target) / rule.target,
             sortOrder: items.length + 1, role: rule.key };
         }))
       .filter(c => !c.product.published_id || c.product.max_qty == null || Number(c.product.max_qty) >= c.qty)
-      .sort((a, b) => a.score - b.score || Number(!a.product.published_id) - Number(!b.product.published_id)
+      .sort((a, b) => a.preference - b.preference || a.score - b.score || Number(!a.product.published_id) - Number(!b.product.published_id)
         || (a.basePrice + a.margin) * a.qty - (b.basePrice + b.margin) * b.qty
         || String(a.product.id).localeCompare(String(b.product.id), 'en', { numeric: true }));
     if (!candidates.length) { missing.push(rule.label); continue; }

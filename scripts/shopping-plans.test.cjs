@@ -51,3 +51,19 @@ test('apply publishes missing real supplier catalog records, seeds ten packages,
  assert.equal(writes.some(([sql])=>sql.includes('products SET')),false);
  assert.equal(writes.at(-1)[0],'COMMIT');
 });
+test('production Pringles crisps are not selected as soup potatoes',()=>{
+ const rows=catalog().filter(p=>p.id!=='12');
+ rows.push(p(300,'PRINGLES POTATO CRISPS SEAWEED BURST KLG 102g'),p(301,'POTATO CHIPS ORIGINAL 300g'),p(302,'ROTI KENTANG 300g'),p(303,'KENTANG FROZEN FRENCH FRIES 300g'));
+ for(const menu of plans(rows).filter(p=>p.slug.endsWith('sayur-sop'))){
+  assert.ok(menu.plan.missing.includes('Kentang'));assert.equal(menu.items.some(i=>['300','301','302','303'].includes(i.product.id)),false);
+ }
+ rows.push(p(304,'Kentang Segar 300g'));
+ for(const menu of plans(rows).filter(p=>p.slug.endsWith('sayur-sop'))){assert.equal(menu.plan.missing.length,0);assert.ok(menu.items.some(i=>i.product.id==='304'))}
+});
+test('processed vegetable products never substitute for fresh soup or chicken-kecap ingredients',()=>{
+ const rows=catalog().filter(p=>!['9','10','11','13'].includes(p.id));
+ rows.push(p(310,'Garlic Powder 100g'),p(311,'Bawang Merah Goreng 100g'),p(312,'Wortel Juice 200g'),p(313,'Cabbage Soup 200g'));
+ const all=plans(rows);
+ assert.deepEqual(all.find(p=>p.slug==='paket-weekly-ayam-kecap').plan.missing,['Bawang putih','Bawang merah']);
+ assert.deepEqual(all.find(p=>p.slug==='paket-weekly-sayur-sop').plan.missing,['Wortel','Kol/kubis']);
+});

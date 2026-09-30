@@ -15,6 +15,7 @@ import { Product } from '../products/entities/product.entity';
 import { BundlesService } from './bundles.service';
 import { BatchesService } from '../batches/batches.service';
 import { CreateBundleDto, UpdateBundleDto } from './dto/upsert-bundle.dto';
+import { QueryBundleProductsDto } from './dto/query-bundle-products.dto';
 import type { BundleView } from './interfaces/bundle.interface';
 
 @Injectable()
@@ -34,7 +35,7 @@ export class BundlesAdminService {
   ) {}
 
   /** Inactive pakets included — the admin needs to see what he switched off. */
-  async findAll(batchId?: string): Promise<BundleView[]> {
+  async findAll(batchId?: string) {
     const resolved = batchId ?? (await this.batchesService.resolveOpenBatchId());
     const bundles = await this.bundleRepo.find({
       order: { sortOrder: 'ASC', name: 'ASC' },
@@ -43,30 +44,58 @@ export class BundlesAdminService {
     if (!ids.length) return [];
 
     const priced = await this.bundlesService.priceByIds(ids, resolved);
+    // Pricing may exclude unavailable products or inactive bundles. Editing
+    // must preserve the complete canonical contents rather than that projection.
+    const items = await this.itemRepo.find({
+      where: { bundleId: In(ids) },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
     // priceByIds filters to active; fall back to a bare row for the rest so
     // an inactive paket still shows up in the table.
-    return bundles.map(
-      (b) =>
-        priced.get(b.id) ?? {
-          bundleId: b.id,
-          slug: b.slug,
-          name: b.name,
-          tagline: b.tagline,
-          description: b.description,
-          targetMarket: b.targetMarket,
-          imageUrl: b.imageUrl,
-          itemsCount: 0,
-          modal: 0,
-          margin: b.margin,
-          price: 0,
-          loosePrice: 0,
-          savings: 0,
-          maxQty: b.maxQty,
-          poStatus: 'hidden' as BundleView['poStatus'],
-          blockedBy: b.isActive ? ['Paket belum punya isi'] : ['Paket nonaktif'],
-          members: [],
-        },
-    );
+    return bundles.map((b) => ({
+      ...(priced.get(String(b.id)) ?? {
+        bundleId: String(b.id), slug: b.slug, name: b.name,
+        tagline: b.tagline, description: b.description, targetMarket: b.targetMarket,
+        imageUrl: b.imageUrl, itemsCount: 0, modal: 0, margin: b.margin,
+        price: 0, loosePrice: 0, savings: 0, maxQty: b.maxQty,
+        poStatus: 'hidden' as BundleView['poStatus'],
+        blockedBy: b.isActive ? ['Paket belum punya isi yang tersedia'] : ['Paket nonaktif'],
+        members: [],
+      }),
+      isActive: b.isActive,
+      sortOrder: b.sortOrder,
+      adminItems: items.filter((i) => String(i.bundleId) === String(b.id)).map((i) => ({
+        productId: String(i.productId), qty: i.qty, sortOrder: i.sortOrder,
+      })),
+    }));
+  }
+
+  /** Master products, not the current batch's paginated storefront catalog. */
+  async findProducts(query: QueryBundleProductsDto) {
+    const qb = this.productRepo.createQueryBuilder('p');
+    const selectedIds = query.ids?.split(',');
+    if (selectedIds) {
+      // Keep unavailable members identifiable so an admin can replace them.
+      qb.withDeleted().where('p.id IN (:...ids)', { ids: selectedIds });
+    } else {
+      qb.where('p.is_active = 1').andWhere('p.merchant_id IS NULL');
+    }
+    const keyword = query.q?.trim();
+    if (keyword && !selectedIds) {
+      qb.andWhere('(p.name LIKE :keyword OR p.sku LIKE :keyword OR p.category LIKE :keyword)', {
+        keyword: `%${keyword}%`,
+      });
+    }
+    const [products, total] = await qb.orderBy('p.name', 'ASC').addOrderBy('p.id', 'ASC')
+      .skip((query.page - 1) * query.limit).take(query.limit).getManyAndCount();
+    return {
+      data: products.map((p) => ({
+        productId: String(p.id), name: p.name, sku: p.sku, unit: p.unit,
+        basePrice: Number(p.basePrice), margin: Number(p.margin),
+        selectable: p.isActive && !p.deletedAt && !p.merchantId,
+      })),
+      meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+    };
   }
 
   async create(dto: CreateBundleDto): Promise<BundleView> {
@@ -100,7 +129,7 @@ export class BundlesAdminService {
       return bundle.id;
     });
 
-    return this.priceOne(id);
+    return this.adminOne(id);
   }
 
   async update(id: string, dto: UpdateBundleDto): Promise<BundleView> {
@@ -139,7 +168,7 @@ export class BundlesAdminService {
       }
     });
 
-    return this.priceOne(id);
+    return this.adminOne(id);
   }
 
   async softRemove(id: string): Promise<void> {
@@ -206,10 +235,9 @@ export class BundlesAdminService {
     }
   }
 
-  private async priceOne(id: string): Promise<BundleView> {
-    const batchId = await this.batchesService.resolveOpenBatchId();
-    const view = (await this.bundlesService.priceByIds([id], batchId)).get(id);
-    if (!view) throw new NotFoundException(`Paket ${id} tidak bisa dihitung`);
+  private async adminOne(id: string) {
+    const view = (await this.findAll()).find((b) => String(b.bundleId) === String(id));
+    if (!view) throw new NotFoundException(`Paket ${id} tidak ditemukan`);
     return view;
   }
 }

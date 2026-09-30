@@ -13,6 +13,7 @@ import {
 
 import { BundlesAdminService } from './bundles.admin.service';
 import { CreateBundleDto, UpdateBundleDto } from './dto/upsert-bundle.dto';
+import { QueryBundleProductsDto } from './dto/query-bundle-products.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AdminRole } from '../../common/enums/admin-role.enum';
 
@@ -25,6 +26,11 @@ export class BundlesAdminController {
   @Get()
   findAll(@Query('batchId') batchId?: string) {
     return this.bundlesAdmin.findAll(batchId);
+  }
+
+  @Get('products')
+  products(@Query() query: QueryBundleProductsDto) {
+    return this.bundlesAdmin.findProducts(query);
   }
 
   @Post()

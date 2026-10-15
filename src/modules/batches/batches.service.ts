@@ -30,14 +30,83 @@ export class BatchesService {
         closesAt: MoreThanOrEqual(now),
       },
     });
-    if (open) return open;
+    if (open) {
+      await this.ensureCatalog(open);
+      return open;
+    }
 
     const latest = await this.batchRepo.findOne({
       where: {},
       order: { opensAt: 'DESC' },
     });
     if (!latest) throw new NotFoundException('Belum ada batch PO');
+    await this.ensureCatalog(latest);
     return latest;
+  }
+
+
+  /**
+   * A weekly rollover must not empty the daily storefront catalog.
+   * Seed only a completely empty batch; never overwrite an admin's prices,
+   * availability, or deliberately hidden catalog.
+   */
+  private async ensureCatalog(batch: PoBatch): Promise<void> {
+    if (batch.status === BatchStatus.CANCELLED || batch.status === BatchStatus.DRAFT) return;
+    const existing = await this.batchRepo.query(
+      'SELECT id FROM product_batch_prices WHERE batch_id = ? LIMIT 1',
+      [batch.id],
+    );
+    if (existing.length) return;
+
+    await this.batchRepo.manager.transaction(async (em) => {
+      // Serialize concurrent storefront requests/cron workers for this batch.
+      const locked = await em.query(
+        'SELECT id, status FROM po_batches WHERE id = ? FOR UPDATE',
+        [batch.id],
+      );
+      if (!locked.length || [BatchStatus.CANCELLED, BatchStatus.DRAFT].includes(locked[0].status)) return;
+      const populated = await em.query(
+        'SELECT id FROM product_batch_prices WHERE batch_id = ? LIMIT 1',
+        [batch.id],
+      );
+      if (populated.length) return;
+
+      const sources = await em.query(
+        `SELECT b.id FROM po_batches b
+         WHERE b.id <> ? AND b.opens_at <= ?
+           AND b.status NOT IN ('cancelled', 'draft')
+           AND EXISTS (
+             SELECT 1 FROM product_batch_prices prices WHERE prices.batch_id = b.id
+           )
+         ORDER BY b.opens_at DESC, b.id DESC LIMIT 1`,
+        [batch.id, batch.opensAt],
+      );
+      if (!sources.length) return;
+
+      const result = await em.query(
+        `INSERT INTO product_batch_prices
+           (batch_id, product_id, base_price, margin, market_reference_price,
+            max_qty, po_status, sort_order)
+         SELECT ?, old.product_id, old.base_price, old.margin,
+                old.market_reference_price, old.max_qty,
+                CASE
+                  WHEN old.po_status = 'hidden' THEN 'hidden'
+                  WHEN p.supplier_available = 0 THEN 'sold_out'
+                  ELSE old.po_status
+                END,
+                old.sort_order
+         FROM product_batch_prices old
+         INNER JOIN products p ON p.id = old.product_id
+         WHERE old.batch_id = ?
+           AND p.deleted_at IS NULL AND p.is_active = 1
+           AND (p.merchant_id IS NULL OR p.merchant_status = 'approved')
+         ON DUPLICATE KEY UPDATE product_id = VALUES(product_id)`,
+        [batch.id, sources[0].id],
+      );
+      this.logger.log(
+        `Batch ${batch.code}: carried forward ${result.affectedRows ?? 0} catalog rows from batch ${sources[0].id}`,
+      );
+    });
   }
 
   /** Used by services that only need the FK. */
@@ -85,7 +154,8 @@ export class BatchesService {
     }
 
     batch.status = BatchStatus.OPEN;
-    await this.batchRepo.save(batch);
+    batch = await this.batchRepo.save(batch);
+    await this.ensureCatalog(batch);
     this.logger.log(`Batch ${code} opened`);
   }
 

@@ -18,6 +18,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { MerchantsModule } from './modules/merchants/merchants.module';
+import { TrafficModule } from './modules/traffic/traffic.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { MerchantsModule } from './modules/merchants/merchants.module';
     ReportsModule,
     PromotionsModule,
     MerchantsModule,
+    TrafficModule,
   ],
   providers: [
     // Order matters: authentication resolves req.user before roles are checked.

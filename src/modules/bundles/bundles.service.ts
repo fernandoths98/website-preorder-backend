@@ -180,7 +180,7 @@ export class BundlesService {
             ...rows.filter(r => r.maxQty != null && Number(r.maxQty) < r.qty).map(r => `${r.name} (jumlah tidak mencukupi)`),
             ...unresolved.map(name => `${name} (belum tersedia di katalog)`),
             ...(!rows.length && !unresolved.length ? ['Isi paket belum dikonfigurasi'] : []),
-            ...missing.map((m) => `${m.name} (belum dipublish ke batch ini)`),
+            ...missing.map((m) => `${m.name} (belum tersedia di katalog)`),
             ...rows
               .filter((r) => r.published && r.poStatus !== PoStatus.AVAILABLE)
               .map((r) => `${r.name} (${r.poStatus})`),

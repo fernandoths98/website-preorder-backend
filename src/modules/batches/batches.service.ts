@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import { MoreThan, MoreThanOrEqual, In, Not, Repository } from 'typeorm';
 
 import { BatchStatus, PoBatch } from './entities/po-batch.entity';
+import { defaultDeliverySchedule, jakartaDate, nextDeliverySchedule } from './delivery-schedule';
 
 const TZ = 'Asia/Jakarta';
 
@@ -16,19 +17,16 @@ export class BatchesService {
     private readonly batchRepo: Repository<PoBatch>,
   ) {}
 
-  /**
-   * The batch the storefront is currently reading. Falls back to the most
-   * recent batch so the catalog is browsable (read-only) outside Mon–Wed.
-   */
+  /** Orders are accepted every day; the internal batch only groups delivery. */
   async current(): Promise<PoBatch> {
     const now = new Date();
-
     const open = await this.batchRepo.findOne({
       where: {
         status: BatchStatus.OPEN,
-        opensAt: LessThanOrEqual(now),
-        closesAt: MoreThanOrEqual(now),
+        closesAt: MoreThan(now),
+        deliveryDate: MoreThanOrEqual(jakartaDate(now)),
       },
+      order: { deliveryDate: 'ASC', closesAt: 'ASC' },
     });
     if (open) {
       await this.ensureCatalog(open);
@@ -36,12 +34,43 @@ export class BatchesService {
     }
 
     const latest = await this.batchRepo.findOne({
-      where: {},
-      order: { opensAt: 'DESC' },
+      where: { status: Not(In([BatchStatus.DRAFT, BatchStatus.CANCELLED])) },
+      order: { closesAt: 'DESC' },
     });
-    if (!latest) throw new NotFoundException('Belum ada batch PO');
-    await this.ensureCatalog(latest);
-    return latest;
+    let schedule = latest?.deliveryDate
+      ? nextDeliverySchedule({ opensAt: latest.opensAt, closesAt: latest.closesAt, deliveryDate: latest.deliveryDate }, now)
+      : defaultDeliverySchedule(now);
+
+    for (let attempt = 0; attempt < 104; attempt++) {
+      const code = BatchesService.weekCode(new Date(schedule.opensAt.getTime() + 7 * 3600_000));
+      let batch = await this.batchRepo.findOne({ where: { code } });
+      if (!batch) {
+        try {
+          batch = await this.batchRepo.save(this.batchRepo.create({ ...schedule, code, status: BatchStatus.OPEN }));
+        } catch (error: any) {
+          // Two requests can create the same delivery schedule concurrently.
+          if ((error?.driverError?.code ?? error?.code) !== 'ER_DUP_ENTRY') throw error;
+          batch = await this.batchRepo.findOne({ where: { code } });
+          if (!batch) throw error;
+        }
+      }
+      if (batch.status === BatchStatus.OPEN && new Date(batch.closesAt) > now && batch.deliveryDate && batch.deliveryDate >= jakartaDate(now)) {
+        await this.ensureCatalog(batch);
+        return batch;
+      }
+      // Never reopen historical, cancelled, or explicitly draft schedules.
+      schedule = nextDeliverySchedule(schedule, new Date(Math.max(now.getTime(), schedule.closesAt.getTime() + 1)));
+    }
+    throw new ServiceUnavailableException('Jadwal pengiriman belum tersedia. Silakan hubungi admin.');
+  }
+
+  async forCheckout(expectedDeliveryDate?: string, legacyBatchId?: string): Promise<PoBatch> {
+    const batch = await this.current();
+    if ((expectedDeliveryDate && expectedDeliveryDate !== batch.deliveryDate) ||
+        (!expectedDeliveryDate && legacyBatchId && legacyBatchId !== batch.id)) {
+      throw new ConflictException('Jadwal pengiriman diperbarui. Muat ulang checkout dan periksa tanggal pengiriman sebelum membayar.');
+    }
+    return batch;
   }
 
 
@@ -122,41 +151,18 @@ export class BatchesService {
 
   /** ISO week code, e.g. PO-2026-W38. */
   static weekCode(d: Date): string {
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
     const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
     return `PO-${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
   }
 
-  /** Monday 00:05 WIB — open this week's batch, creating it if the admin didn't. */
+  /** Keep the next delivery ready; storefront requests also resolve it on demand. */
   @Cron('5 0 * * 1', { timeZone: TZ })
   async openWeekly(): Promise<void> {
-    const code = BatchesService.weekCode(new Date());
-    let batch = await this.batchRepo.findOne({ where: { code } });
-
-    if (!batch) {
-      const opensAt = new Date();
-      const closesAt = new Date(opensAt);
-      closesAt.setDate(closesAt.getDate() + 2);
-      closesAt.setHours(23, 59, 59, 0);
-
-      const deliveryDate = new Date(opensAt);
-      deliveryDate.setDate(deliveryDate.getDate() + 5); // Saturday
-
-      batch = this.batchRepo.create({
-        code,
-        opensAt,
-        closesAt,
-        deliveryDate: deliveryDate.toISOString().slice(0, 10),
-        status: BatchStatus.DRAFT,
-      });
-    }
-
-    batch.status = BatchStatus.OPEN;
-    batch = await this.batchRepo.save(batch);
-    await this.ensureCatalog(batch);
-    this.logger.log(`Batch ${code} opened`);
+    const batch = await this.current();
+    this.logger.log(`Delivery schedule ${batch.code} ready`);
   }
 
   /** Wednesday 23:59 WIB — close ordering; sourcing starts Thursday. */

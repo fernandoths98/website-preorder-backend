@@ -16,7 +16,6 @@ import {
   PoStatus,
   ProductBatchPrice,
 } from '../products/entities/product-batch-price.entity';
-import { BatchStatus } from '../batches/entities/po-batch.entity';
 import { BatchesService } from '../batches/batches.service';
 import { BundlesService } from '../bundles/bundles.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -85,17 +84,7 @@ export class OrdersService {
 
     let batch: Awaited<ReturnType<BatchesService['findOne']>> | null = null;
     if (needsBatch) {
-      if (!dto.batchId) {
-        throw new BadRequestException('Batch PO wajib untuk produk reguler atau paketan');
-      }
-      batch = await this.batchesService.findOne(dto.batchId);
-      if (batch.status !== BatchStatus.OPEN) {
-        throw new ConflictException('PO reguler sedang ditutup');
-      }
-      const now = new Date();
-      if (now < new Date(batch.opensAt) || now > new Date(batch.closesAt)) {
-        throw new ConflictException('PO reguler sedang ditutup');
-      }
+      batch = await this.batchesService.forCheckout(dto.expectedDeliveryDate, dto.batchId);
     }
 
     const lines = await this.resolveLines(dto, batch?.id ?? null, productById);
@@ -266,10 +255,11 @@ export class OrdersService {
         const row = byProduct.get(String(item.productId));
         if (!row?.product) {
           throw new BadRequestException(
-            `Produk ${item.productId} tidak tersedia di PO reguler saat ini`,
+            `Produk ${item.productId} tidak tersedia di katalog saat ini`,
           );
         }
-        if (row.poStatus === PoStatus.SOLD_OUT || row.poStatus === PoStatus.HIDDEN) {
+        if (!row.product.isActive || row.product.supplierAvailable === false || row.product.deletedAt ||
+            row.poStatus === PoStatus.SOLD_OUT || row.poStatus === PoStatus.HIDDEN) {
           throw new ConflictException(`${row.product.name} sudah habis`);
         }
         if (row.maxQty && item.qty > row.maxQty) {
@@ -293,7 +283,7 @@ export class OrdersService {
     // --- pakets ---
     for (const wanted of dto.bundles ?? []) {
       if (!batchId) {
-        throw new BadRequestException('Paketan membutuhkan batch PO reguler yang aktif');
+        throw new BadRequestException('Jadwal pengiriman paket belum tersedia');
       }
       const priced = (
         await this.bundlesService.priceByIds([wanted.bundleId], batchId)

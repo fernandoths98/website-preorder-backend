@@ -79,6 +79,10 @@ export class OrderBundleDto {
 
 export class CreateOrderDto {
   @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  expectedDeliveryDate?: string;
+
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   batchId?: string;

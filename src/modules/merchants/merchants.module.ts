@@ -1,3 +1,4 @@
+import { AuthModule } from '../auth/auth.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
@@ -21,6 +22,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([
       Merchant,
       Product,
@@ -46,6 +48,10 @@ import { PromotionsModule } from '../promotions/promotions.module';
     MerchantBannersController,
     MerchantBannersAdminController,
   ],
-  providers: [MerchantsService, MerchantProductsService, MerchantBannersService],
+  providers: [
+    MerchantsService,
+    MerchantProductsService,
+    MerchantBannersService,
+  ],
 })
 export class MerchantsModule {}

@@ -13,8 +13,12 @@ async function bootstrap() {
   });
   const config = app.get(ConfigService);
 
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
   app.useStaticAssets('/app/uploads', { prefix: '/api/v1/uploads/' });
-  app.useStaticAssets('/app/assets/product-media', { prefix: '/api/v1/product-media/' });
+  app.useStaticAssets('/app/assets/product-media', {
+    prefix: '/api/v1/product-media/',
+  });
 
   // Supplier snapshots can contain thousands of products. The default Express
   // JSON limit (~100 KB) is too small for a complete catalog snapshot, so use
@@ -24,7 +28,6 @@ async function bootstrap() {
 
   // Real client IP behind Nginx / OpenLiteSpeed.
   app.set('trust proxy', 1);
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
   // The API owns the /api prefix — do NOT rewrite it in the proxy.
   app.setGlobalPrefix('api/v1');

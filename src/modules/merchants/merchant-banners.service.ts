@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { validatedImage } from '../../common/validated-image';
 import {
   BadRequestException,
   Injectable,
@@ -9,7 +11,10 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Repository } from 'typeorm';
 
-import { Product, MerchantProductStatus } from '../products/entities/product.entity';
+import {
+  Product,
+  MerchantProductStatus,
+} from '../products/entities/product.entity';
 import { PromotionsService } from '../promotions/promotions.service';
 import {
   MerchantBannerStatus,
@@ -48,7 +53,12 @@ export class MerchantBannersService {
   async submit(
     merchantId: string,
     productId: string,
-    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      size: number;
+      originalname: string;
+    },
     width: number,
     height: number,
   ) {
@@ -57,13 +67,17 @@ export class MerchantBannersService {
     });
 
     if (!product) throw new NotFoundException('Produk mitra tidak ditemukan');
-    if (product.merchantStatus !== MerchantProductStatus.APPROVED || !product.isActive) {
+    if (
+      product.merchantStatus !== MerchantProductStatus.APPROVED ||
+      !product.isActive
+    ) {
       throw new BadRequestException(
         'Banner baru bisa diajukan setelah produk disetujui admin',
       );
     }
 
-    if (!file?.buffer?.length) throw new BadRequestException('File banner wajib diunggah');
+    if (!file?.buffer?.length)
+      throw new BadRequestException('File banner wajib diunggah');
     if (!ALLOWED_MIME.has(file.mimetype)) {
       throw new BadRequestException('Banner harus JPG, PNG, atau WebP');
     }
@@ -76,16 +90,15 @@ export class MerchantBannersService {
       );
     }
 
-    const ext =
-      file.mimetype === 'image/png'
-        ? '.png'
-        : file.mimetype === 'image/webp'
-          ? '.webp'
-          : '.jpg';
+    const buffer = await validatedImage(file.buffer, {
+      width: BANNER_WIDTH,
+      height: BANNER_HEIGHT,
+    });
+    const ext = '.webp';
 
     const dir = '/app/uploads/banners';
-    const safeName = `merchant-${merchantId}-product-${productId}-${Date.now()}${ext}`;
-    await this.writeUploadFile(dir, safeName, file.buffer);
+    const safeName = `merchant-banner-${randomUUID()}${ext}`;
+    await this.writeUploadFile(dir, safeName, buffer);
 
     const row = this.banners.create({
       merchantId,
@@ -104,13 +117,19 @@ export class MerchantBannersService {
 
   async uploadFinal(
     id: string,
-    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      size: number;
+      originalname: string;
+    },
     width: number,
     height: number,
   ) {
     const row = await this.banners.findOne({ where: { id } });
     if (!row) throw new NotFoundException('Pengajuan banner tidak ditemukan');
-    if (!file?.buffer?.length) throw new BadRequestException('File banner final wajib diunggah');
+    if (!file?.buffer?.length)
+      throw new BadRequestException('File banner final wajib diunggah');
     if (!ALLOWED_MIME.has(file.mimetype)) {
       throw new BadRequestException('Banner harus JPG, PNG, atau WebP');
     }
@@ -123,15 +142,14 @@ export class MerchantBannersService {
       );
     }
 
-    const ext =
-      file.mimetype === 'image/png'
-        ? '.png'
-        : file.mimetype === 'image/webp'
-          ? '.webp'
-          : '.jpg';
+    const buffer = await validatedImage(file.buffer, {
+      width: BANNER_WIDTH,
+      height: BANNER_HEIGHT,
+    });
+    const ext = '.webp';
     const dir = '/app/uploads/banners';
-    const safeName = `final-banner-${id}-${Date.now()}${ext}`;
-    await this.writeUploadFile(dir, safeName, file.buffer);
+    const safeName = `final-banner-${randomUUID()}${ext}`;
+    await this.writeUploadFile(dir, safeName, buffer);
     row.finalImageUrl = `/api/v1/uploads/banners/${safeName}`;
     await this.banners.save(row);
     return row;
@@ -184,7 +202,9 @@ export class MerchantBannersService {
     const row = await this.banners.findOne({ where: { id } });
     if (!row) throw new NotFoundException('Pengajuan banner tidak ditemukan');
     if (row.status === MerchantBannerStatus.PUBLISHED) {
-      throw new BadRequestException('Banner yang sudah tayang tidak bisa direview ulang');
+      throw new BadRequestException(
+        'Banner yang sudah tayang tidak bisa direview ulang',
+      );
     }
 
     row.status =
@@ -210,10 +230,14 @@ export class MerchantBannersService {
     const row = await this.banners.findOne({ where: { id } });
     if (!row) throw new NotFoundException('Pengajuan banner tidak ditemukan');
     if (row.status !== MerchantBannerStatus.APPROVED) {
-      throw new BadRequestException('Banner harus disetujui sebelum dipublikasikan');
+      throw new BadRequestException(
+        'Banner harus disetujui sebelum dipublikasikan',
+      );
     }
 
-    const product = await this.products.findOne({ where: { id: row.productId } });
+    const product = await this.products.findOne({
+      where: { id: row.productId },
+    });
     if (!product) throw new NotFoundException('Produk tidak ditemukan');
 
     const imageUrl = input.finalImageUrl?.trim() || row.finalImageUrl;

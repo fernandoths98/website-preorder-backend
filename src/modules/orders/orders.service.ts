@@ -1,3 +1,4 @@
+import { OrderAccessService } from './order-access.service';
 import {
   BadRequestException,
   ConflictException,
@@ -7,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { Order, OrderStatus, DeliveryType } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -22,10 +23,14 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { PaymentStatus } from './entities/payment.entity';
 import { PaymentsService, type PaymentView } from './payments.service';
 import { SettingsService } from '../settings/settings.service';
-import { MerchantProductStatus, Product } from '../products/entities/product.entity';
+import {
+  MerchantProductStatus,
+  Product,
+} from '../products/entities/product.entity';
 
 export interface CreateOrderResult {
   orderNo: string;
+  orderAccessToken: string;
   grandTotal: number;
   itemsCount: number;
   payment: PaymentView;
@@ -61,6 +66,7 @@ export class OrdersService {
     private readonly paymentsService: PaymentsService,
     private readonly settingsService: SettingsService,
     private readonly dataSource: DataSource,
+    private readonly orderAccess: OrderAccessService,
   ) {}
 
   /**
@@ -84,7 +90,10 @@ export class OrdersService {
 
     let batch: Awaited<ReturnType<BatchesService['findOne']>> | null = null;
     if (needsBatch) {
-      batch = await this.batchesService.forCheckout(dto.expectedDeliveryDate, dto.batchId);
+      batch = await this.batchesService.forCheckout(
+        dto.expectedDeliveryDate,
+        dto.batchId,
+      );
     }
 
     const lines = await this.resolveLines(dto, batch?.id ?? null, productById);
@@ -126,11 +135,6 @@ export class OrdersService {
             deliveryNote: dto.customer.deliveryNote ?? null,
           }),
         );
-      } else {
-        // Keep the latest name/desk — people move floors.
-        customer.name = dto.customer.name;
-        if (dto.customer.deliveryNote) customer.deliveryNote = dto.customer.deliveryNote;
-        await customerRepo.save(customer);
       }
 
       const orderRepo = manager.getRepository(Order);
@@ -143,6 +147,8 @@ export class OrdersService {
           orderNo,
           batchId: batch?.id ?? null,
           customerId: customer.id,
+          customerNameSnapshot: dto.customer.name,
+          customerDeliveryNoteSnapshot: dto.customer.deliveryNote ?? null,
           status: OrderStatus.PENDING,
           itemsCount: totals.itemsCount,
           subtotalBase: totals.subtotalBase,
@@ -151,10 +157,10 @@ export class OrdersService {
           customerNote: dto.note ?? null,
           deliveryType: dto.deliveryType,
           addressLine1: outside ? dto.address.line1 : null,
-          addressDistrict: outside ? dto.address.district ?? null : null,
+          addressDistrict: outside ? (dto.address.district ?? null) : null,
           addressCity: outside ? dto.address.city : null,
-          addressPostal: outside ? dto.address.postalCode ?? null : null,
-          addressLandmark: outside ? dto.address.landmark ?? null : null,
+          addressPostal: outside ? (dto.address.postalCode ?? null) : null,
+          addressLandmark: outside ? (dto.address.landmark ?? null) : null,
           waMessageHash: hash,
         }),
       );
@@ -175,7 +181,10 @@ export class OrdersService {
 
       // save() returns the row without the eager relation resolved, and the
       // WhatsApp recap needs the name.
-      saved.customer = customer;
+      saved.customer = Object.assign(new Customer(), customer, {
+        name: dto.customer.name,
+        deliveryNote: dto.customer.deliveryNote ?? null,
+      });
       return saved;
     });
 
@@ -186,9 +195,9 @@ export class OrdersService {
     return this.toResult(order, lines, payment);
   }
 
-  /** Public order lookup for the success page. No auth — the order number is
-   *  the secret, and it is only ever handed to the person who created it. */
-  async findByOrderNo(orderNo: string): Promise<Order> {
+  /** Public lookup requires the checkout capability before querying any order. */
+  async findByOrderNo(orderNo: string, accessToken?: string): Promise<Order> {
+    this.orderAccess.assert(orderNo, accessToken);
     const order = await this.orderRepo.findOne({
       where: { orderNo },
       relations: { items: true, batch: true },
@@ -217,15 +226,16 @@ export class OrdersService {
         .filter((item) => !productById.get(String(item.productId))?.merchantId)
         .map((item) => item.productId);
 
-      const rows = batchId && regularIds.length
-        ? await this.priceRepo.find({
-            where: {
-              batchId,
-              productId: In(regularIds),
-            },
-            relations: { product: true },
-          })
-        : [];
+      const rows =
+        batchId && regularIds.length
+          ? await this.priceRepo.find({
+              where: {
+                batchId,
+                productId: In(regularIds),
+              },
+              relations: { product: true },
+            })
+          : [];
       const byProduct = new Map(rows.map((r) => [String(r.productId), r]));
 
       for (const item of dto.items) {
@@ -236,7 +246,9 @@ export class OrdersService {
             !product.isActive ||
             product.merchantStatus !== MerchantProductStatus.APPROVED
           ) {
-            throw new ConflictException(`${product.name} sedang tidak tersedia`);
+            throw new ConflictException(
+              `${product.name} sedang tidak tersedia`,
+            );
           }
 
           lines.push({
@@ -258,8 +270,13 @@ export class OrdersService {
             `Produk ${item.productId} tidak tersedia di katalog saat ini`,
           );
         }
-        if (!row.product.isActive || row.product.supplierAvailable === false || row.product.deletedAt ||
-            row.poStatus === PoStatus.SOLD_OUT || row.poStatus === PoStatus.HIDDEN) {
+        if (
+          !row.product.isActive ||
+          row.product.supplierAvailable === false ||
+          row.product.deletedAt ||
+          row.poStatus === PoStatus.SOLD_OUT ||
+          row.poStatus === PoStatus.HIDDEN
+        ) {
           throw new ConflictException(`${row.product.name} sudah habis`);
         }
         if (row.maxQty && item.qty > row.maxQty) {
@@ -290,9 +307,14 @@ export class OrdersService {
       ).get(String(wanted.bundleId));
 
       if (!priced) {
-        throw new BadRequestException(`Paket ${wanted.bundleId} tidak tersedia`);
+        throw new BadRequestException(
+          `Paket ${wanted.bundleId} tidak tersedia`,
+        );
       }
-      if (priced.poStatus === PoStatus.SOLD_OUT || priced.poStatus === PoStatus.HIDDEN) {
+      if (
+        priced.poStatus === PoStatus.SOLD_OUT ||
+        priced.poStatus === PoStatus.HIDDEN
+      ) {
         throw new ConflictException(`${priced.name} sedang tidak tersedia`);
       }
       if (priced.maxQty && wanted.qty > priced.maxQty) {
@@ -355,6 +377,7 @@ export class OrdersService {
     grandTotal: number,
   ): string {
     const payload = JSON.stringify({
+      checkoutKey: dto.checkoutKey ?? randomBytes(32).toString('hex'),
       phone: dto.customer.phone,
       deliveryType: dto.deliveryType,
       grandTotal,
@@ -372,6 +395,7 @@ export class OrdersService {
   ): Promise<CreateOrderResult> {
     return {
       orderNo: order.orderNo,
+      orderAccessToken: this.orderAccess.issue(order.orderNo),
       grandTotal: Number(order.grandTotal),
       itemsCount: order.itemsCount,
       payment,
@@ -409,7 +433,10 @@ export class OrdersService {
    * one thing to change, and so the totals in the message are the stored
    * ones rather than whatever the browser thinks.
    */
-  private async buildWaUrl(order: Order, lines: ResolvedLine[]): Promise<string> {
+  private async buildWaUrl(
+    order: Order,
+    lines: ResolvedLine[],
+  ): Promise<string> {
     const admin = await this.settingsService.getWhatsAppNumber();
     const rupiah = (n: number) => `Rp${Math.round(n).toLocaleString('id-ID')}`;
 
@@ -445,9 +472,16 @@ export class OrdersService {
     parts.push(
       order.deliveryType === DeliveryType.OFFICE
         ? `Antar: kantor${order.customer?.deliveryNote ? ` (${order.customer.deliveryNote})` : ''}`
-        : `Antar: ${[order.addressLine1, order.addressDistrict, order.addressCity, order.addressPostal]
+        : `Antar: ${[
+            order.addressLine1,
+            order.addressDistrict,
+            order.addressCity,
+            order.addressPostal,
+          ]
             .filter(Boolean)
-            .join(', ')}${order.addressLandmark ? ` — ${order.addressLandmark}` : ''}`,
+            .join(
+              ', ',
+            )}${order.addressLandmark ? ` — ${order.addressLandmark}` : ''}`,
     );
     if (order.customerNote) parts.push(`Catatan: ${order.customerNote}`);
 

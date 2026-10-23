@@ -1,3 +1,5 @@
+import { validatedImage } from '../../common/validated-image';
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -74,7 +76,7 @@ export class ProductsService {
     private readonly batchesService: BatchesService,
     private readonly settingsService: SettingsService,
     private readonly dataSource: DataSource,
-  ) { }
+  ) {}
 
   // ---------- Storefront ----------
 
@@ -115,7 +117,9 @@ export class ProductsService {
         .addSelect('COUNT(*)', 'count')
         .where('p.is_active = 1')
         .andWhere('p.merchant_id IS NOT NULL')
-        .andWhere('p.merchant_status = :approved', { approved: MerchantProductStatus.APPROVED })
+        .andWhere('p.merchant_status = :approved', {
+          approved: MerchantProductStatus.APPROVED,
+        })
         .andWhere('p.category IS NOT NULL')
         .andWhere("TRIM(p.category) != ''")
         .groupBy('p.category')
@@ -169,7 +173,8 @@ export class ProductsService {
       return this.toMerchantCatalogItem(merchantProduct);
     }
 
-    const resolved = batchId ?? Number(await this.batchesService.resolveOpenBatchId());
+    const resolved =
+      batchId ?? Number(await this.batchesService.resolveOpenBatchId());
 
     const row = await this.priceRepo
       .createQueryBuilder('pbp')
@@ -181,7 +186,8 @@ export class ProductsService {
       .andWhere('pbp.po_status != :hidden', { hidden: PoStatus.HIDDEN })
       .getOne();
 
-    if (!row) throw new NotFoundException(`Product "${slug}" not in this PO batch`);
+    if (!row)
+      throw new NotFoundException(`Product "${slug}" not in this PO batch`);
     const storefront = await this.settingsService.getStorefrontSettings();
     return this.toCatalogItem(row, storefront);
   }
@@ -228,7 +234,11 @@ export class ProductsService {
     if (clash) throw new ConflictException('SKU or slug already exists');
 
     return this.productRepo.save(
-      this.productRepo.create({ ...dto, slug, supplierId: dto.supplierId?.toString() }),
+      this.productRepo.create({
+        ...dto,
+        slug,
+        supplierId: dto.supplierId?.toString(),
+      }),
     );
   }
 
@@ -261,12 +271,13 @@ export class ProductsService {
       throw new BadRequestException('Foto produk maksimal 3 MB');
     }
 
+    const buffer = await validatedImage(file.buffer);
     const dir = '/app/uploads/products';
-    const safeName = `product-${id}-${Date.now()}.webp`;
+    const safeName = `product-${randomUUID()}.webp`;
 
     try {
       await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, safeName), file.buffer);
+      await writeFile(join(dir, safeName), buffer);
     } catch (error) {
       const code =
         typeof error === 'object' && error && 'code' in error
@@ -360,7 +371,8 @@ export class ProductsService {
       .andWhere('p.merchant_status = :approved', { approved: 'approved' })
       .orderBy('p.created_at', 'DESC');
 
-    if (query.category) qb.andWhere('p.category = :cat', { cat: query.category });
+    if (query.category)
+      qb.andWhere('p.category = :cat', { cat: query.category });
 
     const keyword = query.q?.trim();
     if (keyword) {
@@ -451,7 +463,8 @@ export class ProductsService {
       .orderBy('pbp.sort_order', 'ASC')
       .addOrderBy('p.name', 'ASC');
 
-    if (query.category) qb.andWhere('p.category = :cat', { cat: query.category });
+    if (query.category)
+      qb.andWhere('p.category = :cat', { cat: query.category });
     this.applySectionFilter(qb, query.section);
     if (query.status) qb.andWhere('pbp.po_status = :st', { st: query.status });
 
@@ -510,7 +523,10 @@ export class ProductsService {
 
     let changed = 0;
     for (const row of rows) {
-      const suggestion = suggestPricing(row.basePrice, row.marketReferencePrice);
+      const suggestion = suggestPricing(
+        row.basePrice,
+        row.marketReferencePrice,
+      );
       if (Number(row.margin) !== Number(suggestion.margin)) {
         row.margin = suggestion.margin;
         changed += 1;
@@ -576,7 +592,8 @@ export class ProductsService {
       preorderDays: null,
       fulfillment: {
         sourceType: merchant ? 'merchant' : 'wpo',
-        sourceLabel: merchant?.businessName ?? storefront.storefrontShipFromLabel,
+        sourceLabel:
+          merchant?.businessName ?? storefront.storefrontShipFromLabel,
         shippingLabel: merchantShippingLabel,
         deliveryNote: merchantDeliveryNote,
       },

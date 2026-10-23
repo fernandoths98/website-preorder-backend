@@ -1,3 +1,4 @@
+import { OrderAccessService } from './order-access.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -23,14 +24,31 @@ import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, Payment, Customer, ProductBatchPrice, Product]),
+    TypeOrmModule.forFeature([
+      Order,
+      OrderItem,
+      Payment,
+      Customer,
+      ProductBatchPrice,
+      Product,
+    ]),
     BatchesModule,
     ProductsModule,
     BundlesModule,
     SettingsModule,
   ],
-  controllers: [OrdersController, OrdersAdminController, PaymentsController, PaymentsAdminController],
-  providers: [OrdersService, OrdersAdminService, PaymentsService],
+  controllers: [
+    OrdersController,
+    OrdersAdminController,
+    PaymentsController,
+    PaymentsAdminController,
+  ],
+  providers: [
+    OrderAccessService,
+    OrdersService,
+    OrdersAdminService,
+    PaymentsService,
+  ],
   exports: [OrdersService, OrdersAdminService, PaymentsService, TypeOrmModule],
 })
 export class OrdersModule {}

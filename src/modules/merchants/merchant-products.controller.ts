@@ -1,3 +1,4 @@
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   BadRequestException,
   Body,
@@ -17,6 +18,7 @@ import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
 import { UpdateMerchantProductDto } from './dto/update-merchant-product.dto';
 
 @Controller('merchant/products')
+@Roles('merchant')
 export class MerchantProductsController {
   constructor(private readonly service: MerchantProductsService) {}
 
@@ -32,7 +34,9 @@ export class MerchantProductsController {
       fileFilter: (_req, file, cb) => {
         const ok = file.mimetype === 'image/webp';
         cb(
-          ok ? null : new BadRequestException('Foto produk harus berformat WebP'),
+          ok
+            ? null
+            : new BadRequestException('Foto produk harus berformat WebP'),
           ok,
         );
       },

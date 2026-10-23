@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -28,7 +29,14 @@ export class PaymentsController {
     @Body() dto: NusapayCallbackDto,
   ) {
     const expected = this.config.get<string>('WPO_PAYMENT_CALLBACK_KEY');
-    if (!expected || !gatewayKey || gatewayKey !== expected) {
+    if (
+      !expected ||
+      !gatewayKey ||
+      !timingSafeEqual(
+        createHash('sha256').update(gatewayKey).digest(),
+        createHash('sha256').update(expected).digest(),
+      )
+    ) {
       throw new UnauthorizedException('Callback key tidak valid');
     }
 

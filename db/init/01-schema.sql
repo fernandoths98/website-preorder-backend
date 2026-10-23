@@ -122,6 +122,8 @@ CREATE TABLE `orders` (
   `order_no`        VARCHAR(24)     NOT NULL COMMENT 'WPO-20260915-0001',
   `batch_id`        BIGINT UNSIGNED NOT NULL,
   `customer_id`     BIGINT UNSIGNED NOT NULL,
+  `customer_name_snapshot` VARCHAR(120) NULL,
+  `customer_delivery_note_snapshot` VARCHAR(255) NULL,
   `status`          ENUM('pending','confirmed','sourced','delivered','cancelled')
                                     NOT NULL DEFAULT 'pending',
   `items_count`     INT UNSIGNED    NOT NULL DEFAULT 0,

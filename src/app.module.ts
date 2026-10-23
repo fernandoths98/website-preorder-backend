@@ -1,3 +1,4 @@
+import { RequestRateGuard } from './common/guards/request-rate.guard';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -54,6 +55,7 @@ import { TrafficModule } from './modules/traffic/traffic.module';
     TrafficModule,
   ],
   providers: [
+    { provide: APP_GUARD, useClass: RequestRateGuard },
     // Order matters: authentication resolves req.user before roles are checked.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

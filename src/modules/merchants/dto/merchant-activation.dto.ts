@@ -1,4 +1,10 @@
-import { IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateMerchantActivationDto {
   @IsOptional()
@@ -12,6 +18,12 @@ export class ActivateMerchantDto {
   @Length(32, 200)
   token: string;
 
+  @IsString()
+  @Length(8, 72)
+  password: string;
+}
+
+export class SetMerchantPasswordDto {
   @IsString()
   @Length(8, 72)
   password: string;

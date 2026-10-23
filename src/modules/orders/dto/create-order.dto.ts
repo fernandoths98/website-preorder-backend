@@ -1,3 +1,4 @@
+import { IsDefined, IsUUID, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -63,6 +64,7 @@ export class OrderItemDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1000)
   qty: number;
 }
 
@@ -74,10 +76,15 @@ export class OrderBundleDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1000)
   qty: number;
 }
 
 export class CreateOrderDto {
+  @IsOptional()
+  @IsUUID('4')
+  checkoutKey?: string;
+
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   expectedDeliveryDate?: string;
@@ -90,6 +97,7 @@ export class CreateOrderDto {
   @IsEnum(DeliveryType)
   deliveryType: DeliveryType;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => OrderCustomerDto)
   customer: OrderCustomerDto;
@@ -100,6 +108,7 @@ export class CreateOrderDto {
    * client that skips the address form still gets rejected.
    */
   @ValidateIf((o: CreateOrderDto) => o.deliveryType === DeliveryType.OUTSIDE)
+  @IsDefined()
   @ValidateNested()
   @Type(() => DeliveryAddressDto)
   address: DeliveryAddressDto;

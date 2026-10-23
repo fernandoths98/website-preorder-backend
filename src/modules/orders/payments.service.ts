@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, LessThanOrEqual, Repository } from 'typeorm';
 
 import { Order, OrderStatus } from './entities/order.entity';
 import { Payment, PaymentStatus } from './entities/payment.entity';
@@ -50,7 +50,32 @@ export class PaymentsService {
   ) {}
 
   async createOrReuse(order: Order): Promise<PaymentView> {
-    const existing = await this.payments.findOne({ where: { orderId: order.id } });
+    // Serialize QR generation per order, including retries from concurrent requests.
+    const result = await this.dataSource.transaction(async (manager) => {
+      const current = await manager.getRepository(Order).findOne({
+        where: { id: order.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!current || current.status === OrderStatus.CANCELLED) {
+        throw new BadRequestException('Pesanan tidak dapat dibayar');
+      }
+      if (
+        !Number.isFinite(Number(current.grandTotal)) ||
+        Number(current.grandTotal) <= 0
+      ) {
+        throw new BadRequestException('Nominal pesanan tidak valid');
+      }
+      return this.createOrReuseLocked(current, manager.getRepository(Payment));
+    });
+    if (result instanceof BadGatewayException) throw result;
+    return result;
+  }
+
+  private async createOrReuseLocked(
+    order: Order,
+    repo: Repository<Payment>,
+  ): Promise<PaymentView | BadGatewayException> {
+    const existing = await repo.findOne({ where: { orderId: order.id } });
     const now = Date.now();
 
     if (
@@ -66,13 +91,23 @@ export class PaymentsService {
       return this.toView(existing);
     }
 
-    const gatewayUrl = this.gatewayUrl();
-    if (!gatewayUrl) {
-      throw new ServiceUnavailableException('Payment gateway belum dikonfigurasi');
+    // Preserve an issued QR reference for late callbacks. Expired QR codes are never silently replaced.
+    if (existing?.qrContent) {
+      existing.status = PaymentStatus.EXPIRED;
+      await repo.save(existing);
+      return this.toView(existing);
     }
 
-    const partnerReferenceNo = this.makePartnerReference(order.orderNo);
-    const payment = existing ?? this.payments.create({ orderId: order.id });
+    const gatewayUrl = this.gatewayUrl();
+    if (!gatewayUrl) {
+      throw new ServiceUnavailableException(
+        'Payment gateway belum dikonfigurasi',
+      );
+    }
+
+    const partnerReferenceNo =
+      existing?.partnerReferenceNo ?? this.makePartnerReference(order.orderNo);
+    const payment = existing ?? repo.create({ orderId: order.id });
 
     payment.provider = 'nusapay';
     payment.partnerReferenceNo = partnerReferenceNo;
@@ -81,16 +116,17 @@ export class PaymentsService {
     payment.status = PaymentStatus.PENDING;
     payment.providerStatus = null;
     payment.qrContent = null;
-    payment.expiresAt = new Date(now + 10 * 60 * 1000);
+    payment.expiresAt = existing?.expiresAt ?? new Date(now + 10 * 60 * 1000);
     payment.paidAt = null;
     payment.lastProviderCheckAt = null;
     payment.reconciledAt = null;
     payment.reconciliationSource = null;
     payment.rawCallback = null;
-    await this.payments.save(payment);
+    await repo.save(payment);
 
     const generatePath =
-      this.config.get<string>('NUSAPAY_QR_GENERATE_PATH') ?? '/api/v1/qr/qr-mpm-generate';
+      this.config.get<string>('NUSAPAY_QR_GENERATE_PATH') ??
+      '/api/v1/qr/qr-mpm-generate';
 
     try {
       const response = await fetch(`${gatewayUrl}${generatePath}`, {
@@ -113,25 +149,31 @@ export class PaymentsService {
         signal: AbortSignal.timeout(this.timeoutMs()),
       });
 
-      const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const body = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
       if (!response.ok) {
-        throw new Error(String(body.responseMessage ?? `Gateway HTTP ${response.status}`));
+        throw new Error(
+          String(body.responseMessage ?? `Gateway HTTP ${response.status}`),
+        );
       }
 
       const qrContent = String(body.qrContent ?? body.qrString ?? '').trim();
       if (!qrContent) throw new Error('Gateway tidak mengembalikan qrContent');
 
       payment.qrContent = qrContent;
-      payment.providerReferenceNo = body.referenceNo ? String(body.referenceNo) : null;
-      await this.payments.save(payment);
+      payment.providerReferenceNo = body.referenceNo
+        ? String(body.referenceNo)
+        : null;
+      await repo.save(payment);
       return this.toView(payment);
     } catch (error) {
       payment.status = PaymentStatus.FAILED;
-      await this.payments.save(payment);
-      throw new BadGatewayException(
-        error instanceof Error
-          ? `Gagal membuat pembayaran NusaPay: ${error.message}`
-          : 'Gagal membuat pembayaran NusaPay',
+      await repo.save(payment);
+      this.logger.error('NusaPay QR generation failed');
+      return new BadGatewayException(
+        'Gagal membuat pembayaran. Coba lagi beberapa saat.',
       );
     }
   }
@@ -145,8 +187,19 @@ export class PaymentsService {
       payment.expiresAt &&
       payment.expiresAt.getTime() <= Date.now()
     ) {
-      payment.status = PaymentStatus.EXPIRED;
-      await this.payments.save(payment);
+      await this.payments.update(
+        {
+          id: payment.id,
+          partnerReferenceNo: payment.partnerReferenceNo,
+          status: PaymentStatus.PENDING,
+          expiresAt: LessThanOrEqual(new Date()),
+        },
+        { status: PaymentStatus.EXPIRED },
+      );
+      const refreshed = await this.payments.findOneOrFail({
+        where: { id: payment.id },
+      });
+      return this.toView(refreshed);
     }
 
     return this.toView(payment);
@@ -158,7 +211,9 @@ export class PaymentsService {
     if (payment.status !== PaymentStatus.PAID) {
       await this.reconcilePayment(payment, 'customer_recheck');
     }
-    const refreshed = await this.payments.findOneOrFail({ where: { id: payment.id } });
+    const refreshed = await this.payments.findOneOrFail({
+      where: { id: payment.id },
+    });
     return this.toView(refreshed);
   }
 
@@ -166,16 +221,36 @@ export class PaymentsService {
     const payment = await this.payments.findOne({
       where: { partnerReferenceNo: dto.partnerReferenceNo },
     });
-    if (!payment) throw new BadRequestException('Payment reference tidak dikenal');
+    if (!payment)
+      throw new BadRequestException('Payment reference tidak dikenal');
 
-    if (payment.status === PaymentStatus.PAID) {
-      return { ok: true, duplicate: true };
+    const payloadReference = dto.payload.originalPartnerReferenceNo;
+    if (
+      payloadReference &&
+      String(payloadReference) !== payment.partnerReferenceNo
+    ) {
+      throw new BadRequestException('Referensi callback tidak cocok');
     }
-
+    if (
+      dto.payload.latestTransactionStatus &&
+      dto.payload.latestTransactionStatus !== '00'
+    ) {
+      throw new BadRequestException('Status callback tidak cocok');
+    }
+    if (
+      payment.providerReferenceNo &&
+      dto.payload.originalReferenceNo &&
+      String(dto.payload.originalReferenceNo) !== payment.providerReferenceNo
+    ) {
+      throw new BadRequestException('Referensi provider tidak cocok');
+    }
     const payloadAmount = this.extractAmount(dto.payload);
     if (payloadAmount === null || payloadAmount !== Number(payment.amount)) {
       throw new BadRequestException('Nominal callback tidak cocok');
     }
+
+    if (payment.status === PaymentStatus.PAID)
+      return { ok: true, duplicate: true };
 
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     if (Number.isNaN(paidAt.getTime())) {
@@ -186,7 +261,7 @@ export class PaymentsService {
       ? String(dto.payload.originalReferenceNo)
       : null;
 
-    await this.markPaid(
+    const changed = await this.markPaid(
       payment,
       paidAt,
       providerReferenceNo,
@@ -195,7 +270,7 @@ export class PaymentsService {
       '00',
     );
 
-    return { ok: true, duplicate: false };
+    return { ok: true, duplicate: !changed };
   }
 
   async adminList(query: QueryPaymentsDto) {
@@ -219,21 +294,26 @@ export class PaymentsService {
         'p.created_at AS createdAt',
         'o.order_no AS orderNo',
         'o.status AS orderStatus',
-        'c.name AS customerName',
+        'COALESCE(o.customer_name_snapshot, c.name) AS customerName',
         'c.phone AS customerPhone',
       ])
       .orderBy('p.created_at', 'DESC');
 
-    if (query.status) qb.andWhere('p.status = :status', { status: query.status });
+    if (query.status)
+      qb.andWhere('p.status = :status', { status: query.status });
     if (query.q) {
       const term = `%${query.q}%`;
       qb.andWhere(
-        '(o.order_no LIKE :term OR c.name LIKE :term OR c.phone LIKE :term OR p.partner_reference_no LIKE :term OR p.provider_reference_no LIKE :term)',
+        '(o.order_no LIKE :term OR COALESCE(o.customer_name_snapshot, c.name) LIKE :term OR c.phone LIKE :term OR p.partner_reference_no LIKE :term OR p.provider_reference_no LIKE :term)',
         { term },
       );
     }
 
-    const totalRow = await qb.clone().select('COUNT(*)', 'total').orderBy().getRawOne<{ total: string }>();
+    const totalRow = await qb
+      .clone()
+      .select('COUNT(*)', 'total')
+      .orderBy()
+      .getRawOne<{ total: string }>();
     const data = await qb
       .offset((query.page - 1) * query.limit)
       .limit(query.limit)
@@ -297,12 +377,19 @@ export class PaymentsService {
     const candidates = await this.payments
       .createQueryBuilder('p')
       .where('p.status IN (:...statuses)', {
-        statuses: [PaymentStatus.PENDING, PaymentStatus.EXPIRED],
+        statuses: [
+          PaymentStatus.PENDING,
+          PaymentStatus.EXPIRED,
+          PaymentStatus.FAILED,
+        ],
       })
       .andWhere('p.created_at >= :cutoff', { cutoff })
-      .andWhere('(p.last_provider_check_at IS NULL OR p.last_provider_check_at < :staleCheck)', {
-        staleCheck,
-      })
+      .andWhere(
+        '(p.last_provider_check_at IS NULL OR p.last_provider_check_at < :staleCheck)',
+        {
+          staleCheck,
+        },
+      )
       .orderBy('p.created_at', 'ASC')
       .limit(25)
       .getMany();
@@ -331,7 +418,9 @@ export class PaymentsService {
     `);
     const total = Number(anomalies?.[0]?.total ?? 0);
     if (total > 0) {
-      this.logger.error(`PAYMENT ALERT: ${total} provider/local payment inconsistencies require attention`);
+      this.logger.error(
+        `PAYMENT ALERT: ${total} provider/local payment inconsistencies require attention`,
+      );
     }
   }
 
@@ -345,18 +434,16 @@ export class PaymentsService {
       : null;
     payment.lastProviderCheckAt = new Date();
 
-    if (provider.originalReferenceNo) {
-      payment.providerReferenceNo = String(provider.originalReferenceNo);
-    }
-
     if (payment.providerStatus !== '00') {
-      await this.payments.save(payment);
+      await this.saveProviderObservation(payment);
       return { changed: false };
     }
 
-    const providerAmount = this.extractAmount(provider as Record<string, unknown>);
+    const providerAmount = this.extractAmount(
+      provider as Record<string, unknown>,
+    );
     if (providerAmount === null || providerAmount !== Number(payment.amount)) {
-      await this.payments.save(payment);
+      await this.saveProviderObservation(payment);
       this.logger.error(
         `PAYMENT ALERT: amount mismatch for ${payment.partnerReferenceNo}; local=${payment.amount}, provider=${providerAmount}`,
       );
@@ -367,33 +454,46 @@ export class PaymentsService {
       provider.originalPartnerReferenceNo &&
       String(provider.originalPartnerReferenceNo) !== payment.partnerReferenceNo
     ) {
-      await this.payments.save(payment);
-      this.logger.error(`PAYMENT ALERT: reference mismatch for ${payment.partnerReferenceNo}`);
+      await this.saveProviderObservation(payment);
+      this.logger.error(
+        `PAYMENT ALERT: reference mismatch for ${payment.partnerReferenceNo}`,
+      );
       return { changed: false };
     }
 
     const paidAt = provider.paidTime ? new Date(provider.paidTime) : new Date();
-    await this.markPaid(
+    const changed = await this.markPaid(
       payment,
       Number.isNaN(paidAt.getTime()) ? new Date() : paidAt,
-      provider.originalReferenceNo ? String(provider.originalReferenceNo) : payment.providerReferenceNo,
+      provider.originalReferenceNo
+        ? String(provider.originalReferenceNo)
+        : payment.providerReferenceNo,
       provider as Record<string, unknown>,
       source,
       '00',
     );
-    return { changed: true };
+    return { changed };
   }
 
-  private async queryProvider(partnerReferenceNo: string): Promise<ProviderQuery> {
+  private async queryProvider(
+    partnerReferenceNo: string,
+  ): Promise<ProviderQuery> {
     const gatewayUrl = this.gatewayUrl();
-    if (!gatewayUrl) throw new ServiceUnavailableException('Payment gateway belum dikonfigurasi');
+    if (!gatewayUrl)
+      throw new ServiceUnavailableException(
+        'Payment gateway belum dikonfigurasi',
+      );
 
     const queryPath =
-      this.config.get<string>('NUSAPAY_QR_QUERY_PATH') ?? '/api/v1/qr/qr-mpm-query';
+      this.config.get<string>('NUSAPAY_QR_QUERY_PATH') ??
+      '/api/v1/qr/qr-mpm-query';
 
     const response = await fetch(`${gatewayUrl}${queryPath}`, {
       method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({
         originalPartnerReferenceNo: partnerReferenceNo,
         serviceCode: '47',
@@ -418,26 +518,78 @@ export class PaymentsService {
     source: 'webhook' | 'scheduler' | 'customer_recheck' | 'admin_recheck',
     providerStatus: string,
   ) {
-    await this.dataSource.transaction(async (manager) => {
-      payment.status = PaymentStatus.PAID;
-      payment.providerStatus = providerStatus;
-      payment.paidAt = paidAt;
-      payment.providerReferenceNo = providerReferenceNo;
-      payment.rawCallback = payload;
-      payment.lastProviderCheckAt = new Date();
-      payment.reconciledAt = new Date();
-      payment.reconciliationSource = source;
-      await manager.getRepository(Payment).save(payment);
-
+    return this.dataSource.transaction(async (manager) => {
+      // Same lock order as QR generation prevents deadlocks and stale writes.
+      const order = await manager.getRepository(Order).findOne({
+        where: { id: payment.orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const repo = manager.getRepository(Payment);
+      const current = await repo.findOne({
+        where: { id: payment.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!current || current.partnerReferenceNo !== payment.partnerReferenceNo)
+        return false;
+      if (current.status === PaymentStatus.PAID) return false;
+      if (
+        !order ||
+        Number(current.amount) !== Number(payment.amount) ||
+        Number(current.amount) !== Number(order.grandTotal)
+      ) {
+        throw new BadRequestException(
+          'Nominal pembayaran tidak cocok dengan pesanan',
+        );
+      }
+      if (
+        current.providerReferenceNo &&
+        providerReferenceNo &&
+        current.providerReferenceNo !== providerReferenceNo
+      ) {
+        throw new BadRequestException('Referensi provider tidak cocok');
+      }
+      Object.assign(current, {
+        status: PaymentStatus.PAID,
+        providerStatus,
+        paidAt,
+        providerReferenceNo,
+        rawCallback: payload,
+        lastProviderCheckAt: new Date(),
+        reconciledAt: new Date(),
+        reconciliationSource: source,
+      });
+      await repo.save(current);
       await manager
         .getRepository(Order)
         .createQueryBuilder()
         .update(Order)
         .set({ status: OrderStatus.CONFIRMED })
-        .where('id = :id', { id: payment.orderId })
+        .where('id = :id', { id: current.orderId })
         .andWhere('status = :pending', { pending: OrderStatus.PENDING })
         .execute();
+      if (order.status === OrderStatus.CANCELLED)
+        this.logger.error(
+          `PAYMENT ALERT: paid cancelled order ${order.orderNo}; review refund`,
+        );
+      return true;
     });
+  }
+
+  private async saveProviderObservation(payment: Payment) {
+    // Never save a stale entity over a payment that a webhook already marked paid.
+    await this.payments
+      .createQueryBuilder()
+      .update(Payment)
+      .set({
+        providerStatus: payment.providerStatus,
+        lastProviderCheckAt: payment.lastProviderCheckAt,
+      })
+      .where('id = :id', { id: payment.id })
+      .andWhere('partner_reference_no = :reference', {
+        reference: payment.partnerReferenceNo,
+      })
+      .andWhere('status <> :paid', { paid: PaymentStatus.PAID })
+      .execute();
   }
 
   private makePartnerReference(orderNo: string): string {
@@ -448,9 +600,16 @@ export class PaymentsService {
   private extractAmount(payload: Record<string, unknown>): number | null {
     const amount = payload.amount;
     if (!amount || typeof amount !== 'object') return null;
-    const value = (amount as Record<string, unknown>).value;
+    const record = amount as Record<string, unknown>;
+    if (
+      record.currency !== 'IDR' ||
+      !['string', 'number'].includes(typeof record.value)
+    )
+      return null;
+    const value = String(record.value);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
     const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   private gatewayUrl() {

@@ -1,6 +1,14 @@
 import {
-  Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne,
-  OneToMany, PrimaryGeneratedColumn, UpdateDateColumn,
+  AfterLoad,
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import { Customer } from '../../customers/entities/customer.entity';
@@ -45,6 +53,36 @@ export class Order {
   @JoinColumn({ name: 'customer_id' })
   customer?: Customer;
 
+  @Column({
+    name: 'customer_name_snapshot',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  customerNameSnapshot: string | null;
+
+  @Column({
+    name: 'customer_delivery_note_snapshot',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  customerDeliveryNoteSnapshot: string | null;
+
+  @AfterLoad()
+  applyCustomerSnapshot() {
+    if (
+      this.customer &&
+      this.customerNameSnapshot !== null &&
+      this.customerNameSnapshot !== undefined
+    ) {
+      this.customer = Object.assign(new Customer(), this.customer, {
+        name: this.customerNameSnapshot,
+        deliveryNote: this.customerDeliveryNoteSnapshot,
+      });
+    }
+  }
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus;
 
@@ -52,17 +90,40 @@ export class Order {
   itemsCount: number;
 
   /** SUM(base_price * qty) — modal keluar saat sourcing. */
-  @Column({ name: 'subtotal_base', type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
+  @Column({
+    name: 'subtotal_base',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: decimalTransformer,
+  })
   subtotalBase: number;
 
   /** SUM(margin * qty) — gross profit. */
-  @Column({ name: 'subtotal_margin', type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
+  @Column({
+    name: 'subtotal_margin',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: decimalTransformer,
+  })
   subtotalMargin: number;
 
-  @Column({ name: 'grand_total', type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
+  @Column({
+    name: 'grand_total',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: decimalTransformer,
+  })
   grandTotal: number;
 
-  @Column({ name: 'customer_note', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'customer_note',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   customerNote: string | null;
 
   @Column({
@@ -75,22 +136,47 @@ export class Order {
 
   /** Address snapshot — null for office drops. Lives on the order, not the
    *  customer: the same person may order to the office one week, home the next. */
-  @Column({ name: 'address_line1', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'address_line1',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   addressLine1: string | null;
 
-  @Column({ name: 'address_district', type: 'varchar', length: 120, nullable: true })
+  @Column({
+    name: 'address_district',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
   addressDistrict: string | null;
 
-  @Column({ name: 'address_city', type: 'varchar', length: 120, nullable: true })
+  @Column({
+    name: 'address_city',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
   addressCity: string | null;
 
-  @Column({ name: 'address_postal', type: 'varchar', length: 10, nullable: true })
+  @Column({
+    name: 'address_postal',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
   addressPostal: string | null;
 
-  @Column({ name: 'address_landmark', type: 'varchar', length: 160, nullable: true })
+  @Column({
+    name: 'address_landmark',
+    type: 'varchar',
+    length: 160,
+    nullable: true,
+  })
   addressLandmark: string | null;
 
-  /** sha1 of (phone + delivery type + total + lines). Makes a resubmitted
+  /** sha1 of (unpredictable checkout key + phone + delivery type + total + lines). Makes a resubmitted
    *  cart — double tap, back-button from the WhatsApp redirect — return the
    *  original order instead of creating a twin. */
   @Column({ name: 'wa_message_hash', type: 'char', length: 40, nullable: true })

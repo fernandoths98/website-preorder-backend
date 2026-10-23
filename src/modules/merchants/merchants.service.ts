@@ -1,3 +1,4 @@
+import { checkPassword } from '../../common/password-check';
 import {
   BadRequestException,
   ConflictException,
@@ -37,7 +38,8 @@ export class MerchantsService {
       throw new ConflictException('Email ini sudah pernah dipakai akun mitra');
     }
 
-    const base = slugify(dto.businessName, { lower: true, strict: true }) || 'mitra';
+    const base =
+      slugify(dto.businessName, { lower: true, strict: true }) || 'mitra';
     let slug = base;
     let i = 1;
     while (await this.repo.findOne({ where: { slug } })) {
@@ -122,13 +124,16 @@ export class MerchantsService {
     if (row.status !== MerchantStatus.APPROVED) {
       throw new BadRequestException('Akun mitra belum disetujui');
     }
-    if (!row.activationExpiresAt || row.activationExpiresAt.getTime() <= Date.now()) {
+    if (
+      !row.activationExpiresAt ||
+      row.activationExpiresAt.getTime() <= Date.now()
+    ) {
       throw new BadRequestException('Link aktivasi sudah kedaluwarsa');
     }
 
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
 
-    await this.repo
+    const activated = await this.repo
       .createQueryBuilder()
       .update(Merchant)
       .set({
@@ -137,7 +142,14 @@ export class MerchantsService {
         activationExpiresAt: null,
       })
       .where('id = :id', { id: row.id })
+      .andWhere('activation_token_hash = :tokenHash', { tokenHash })
+      .andWhere('activation_expires_at > :now', { now: new Date() })
+      .andWhere('status = :status', { status: MerchantStatus.APPROVED })
       .execute();
+    if (activated.affected !== 1)
+      throw new BadRequestException(
+        'Link aktivasi sudah digunakan atau kedaluwarsa',
+      );
 
     return {
       ok: true,
@@ -171,15 +183,13 @@ export class MerchantsService {
     const row = await this.repo
       .createQueryBuilder('m')
       .addSelect('m.passwordHash')
-      .where('LOWER(m.email) = :email', { email: dto.email.trim().toLowerCase() })
+      .where('LOWER(m.email) = :email', {
+        email: dto.email.trim().toLowerCase(),
+      })
       .getOne();
 
-    if (
-      !row ||
-      row.status !== MerchantStatus.APPROVED ||
-      !row.passwordHash ||
-      !(await argon2.verify(row.passwordHash, dto.password).catch(() => false))
-    ) {
+    const passwordValid = await checkPassword(row?.passwordHash, dto.password);
+    if (!row || row.status !== MerchantStatus.APPROVED || !passwordValid) {
       throw new UnauthorizedException('Email atau password salah');
     }
 

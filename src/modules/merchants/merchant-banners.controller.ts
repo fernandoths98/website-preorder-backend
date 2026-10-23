@@ -1,3 +1,4 @@
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   BadRequestException,
   Controller,
@@ -13,6 +14,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { MerchantBannersService } from './merchant-banners.service';
 
 @Controller('merchant/banners')
+@Roles('merchant')
 export class MerchantBannersController {
   constructor(private readonly service: MerchantBannersService) {}
 
@@ -31,8 +33,15 @@ export class MerchantBannersController {
     FileInterceptor('file', {
       limits: { fileSize: 4 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype);
-        cb(ok ? null : new BadRequestException('Banner harus JPG, PNG, atau WebP'), ok);
+        const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(
+          file.mimetype,
+        );
+        cb(
+          ok
+            ? null
+            : new BadRequestException('Banner harus JPG, PNG, atau WebP'),
+          ok,
+        );
       },
     }),
   )

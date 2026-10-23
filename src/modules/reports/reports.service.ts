@@ -134,20 +134,52 @@ export class ReportsService {
   }
 
   /** CSV for offline use at the store — no spreadsheet dependency. */
-  async sourcingCsv(batchId?: number): Promise<{ filename: string; csv: string }> {
+  async sourcingCsv(
+    batchId?: number,
+  ): Promise<{ filename: string; csv: string }> {
     const sheet = await this.sourcingSheet(batchId);
-    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const esc = (v: string | number) => {
+      const text =
+        typeof v === 'string' && /^[\s]*[=+@\-\t\r\n]/.test(v)
+          ? "'" + v
+          : String(v);
+      return `"${text.replace(/"/g, '""')}"`;
+    };
 
     const lines = [
-      ['Produk', 'Qty', 'Satuan', 'Harga Modal', 'Total Modal', 'Margin', 'Total Jual']
+      [
+        'Produk',
+        'Qty',
+        'Satuan',
+        'Harga Modal',
+        'Total Modal',
+        'Margin',
+        'Total Jual',
+      ]
         .map(esc)
         .join(','),
       ...sheet.rows.map((r) =>
-        [r.productName, r.totalQty, r.unit, r.basePrice, r.totalModal, r.totalMargin, r.totalRevenue]
+        [
+          r.productName,
+          r.totalQty,
+          r.unit,
+          r.basePrice,
+          r.totalModal,
+          r.totalMargin,
+          r.totalRevenue,
+        ]
           .map(esc)
           .join(','),
       ),
-      ['TOTAL', '', '', '', sheet.totals.modal, sheet.totals.margin, sheet.totals.revenue]
+      [
+        'TOTAL',
+        '',
+        '',
+        '',
+        sheet.totals.modal,
+        sheet.totals.margin,
+        sheet.totals.revenue,
+      ]
         .map(esc)
         .join(','),
     ];
@@ -160,7 +192,8 @@ export class ReportsService {
   }
 
   private async resolveBatch(batchId?: number): Promise<PoBatch> {
-    const id = batchId ?? Number(await this.batchesService.resolveOpenBatchId());
+    const id =
+      batchId ?? Number(await this.batchesService.resolveOpenBatchId());
     const batch = await this.batchRepo.findOne({ where: { id: String(id) } });
     if (!batch) throw new NotFoundException(`Batch ${id} not found`);
     return batch;

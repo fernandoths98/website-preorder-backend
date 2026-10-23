@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 
@@ -33,7 +37,8 @@ export class OrdersAdminService {
       .where('o.batch_id = :batchId', { batchId })
       .orderBy('o.created_at', 'DESC');
 
-    if (query.status) qb.andWhere('o.status = :status', { status: query.status });
+    if (query.status)
+      qb.andWhere('o.status = :status', { status: query.status });
 
     if (query.q) {
       const term = `%${query.q}%`;
@@ -41,7 +46,9 @@ export class OrdersAdminService {
         new Brackets((w) =>
           w
             .where('o.order_no LIKE :term', { term })
-            .orWhere('c.name LIKE :term', { term })
+            .orWhere('COALESCE(o.customer_name_snapshot, c.name) LIKE :term', {
+              term,
+            })
             .orWhere('c.phone LIKE :term', { term }),
         ),
       );
@@ -81,13 +88,34 @@ export class OrdersAdminService {
         `Cannot move order from ${order.status} to ${next}`,
       );
     }
-    order.status = next;
-    return this.orderRepo.save(order);
+    const update = this.orderRepo
+      .createQueryBuilder()
+      .update(Order)
+      .set({ status: next })
+      .where('id = :id AND status = :previous', {
+        id: order.id,
+        previous: order.status,
+      });
+    if (next === OrderStatus.CONFIRMED) {
+      update.andWhere(
+        "EXISTS (SELECT 1 FROM payments p WHERE p.order_id = orders.id AND p.status = 'paid')",
+      );
+    }
+    const result = await update.execute();
+    if (result.affected !== 1)
+      throw new BadRequestException(
+        'Status berubah atau pembayaran belum lunas. Muat ulang pesanan.',
+      );
+    return this.findOne(orderNo);
   }
 
   /** Weekend delivery: flip the whole sourced batch in one statement. */
   async bulkAdvance(batchId: number, from: OrderStatus, to: OrderStatus) {
-    if (!TRANSITIONS[from].includes(to)) {
+    if (
+      !Number.isInteger(batchId) ||
+      batchId <= 0 ||
+      !TRANSITIONS[from]?.includes(to)
+    ) {
       throw new BadRequestException(`Cannot move orders from ${from} to ${to}`);
     }
     const res = await this.orderRepo
@@ -95,9 +123,13 @@ export class OrdersAdminService {
       .update(Order)
       .set({ status: to })
       .where('batch_id = :batchId', { batchId })
-      .andWhere('status = :from', { from })
-      .execute();
+      .andWhere('status = :from', { from });
+    if (to === OrderStatus.CONFIRMED)
+      res.andWhere(
+        "EXISTS (SELECT 1 FROM payments p WHERE p.order_id = orders.id AND p.status = 'paid')",
+      );
+    const result = await res.execute();
 
-    return { affected: res.affected ?? 0 };
+    return { affected: result.affected ?? 0 };
   }
 }

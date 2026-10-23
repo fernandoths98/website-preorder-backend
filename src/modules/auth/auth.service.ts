@@ -1,3 +1,5 @@
+import { checkPassword } from '../../common/password-check';
+import { SessionStampService } from './session-stamp.service';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,26 +16,30 @@ export class AuthService {
     @InjectRepository(AdminUser)
     private readonly adminRepo: Repository<AdminUser>,
     private readonly jwtService: JwtService,
+    private readonly sessions: SessionStampService,
   ) {}
 
   async login(dto: LoginDto) {
     const admin = await this.adminRepo
       .createQueryBuilder('a')
       .addSelect('a.passwordHash')
-      .where('a.email = :email', { email: dto.email.toLowerCase() })
+      .where('a.email = :email', { email: dto.email.trim().toLowerCase() })
       .getOne();
 
-    // Constant-ish work either way so a missing email is not timing-distinguishable.
-    const ok =
-      admin?.isActive === true &&
-      (await argon2.verify(admin.passwordHash, dto.password).catch(() => false));
+    const passwordValid = await checkPassword(
+      admin?.passwordHash,
+      dto.password,
+    );
+    const ok = admin?.isActive === true && passwordValid;
 
-    if (!ok || !admin) throw new UnauthorizedException('Email atau password salah');
+    if (!ok || !admin)
+      throw new UnauthorizedException('Email atau password salah');
 
     const payload: JwtPayload = {
       sub: admin.id,
       email: admin.email,
       role: admin.role,
+      sessionStamp: this.sessions.stamp(admin.passwordHash),
     };
 
     return {

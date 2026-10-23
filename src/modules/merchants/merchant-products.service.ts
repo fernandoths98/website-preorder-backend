@@ -1,10 +1,20 @@
-import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { validatedImage } from '../../common/validated-image';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import slugify from 'slugify';
-import { Product, MerchantProductStatus } from '../products/entities/product.entity';
+import {
+  Product,
+  MerchantProductStatus,
+} from '../products/entities/product.entity';
 import { ProductImage } from '../products/entities/product-image.entity';
 import { SubmitMerchantProductDto } from './dto/submit-merchant-product.dto';
 import { UpdateMerchantProductDto } from './dto/update-merchant-product.dto';
@@ -28,29 +38,37 @@ export class MerchantProductsService {
 
   async uploadProductImage(
     merchantId: string,
-    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      size: number;
+      originalname: string;
+    },
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('File foto produk wajib diunggah');
     }
 
     if (file.mimetype !== 'image/webp') {
-      throw new BadRequestException('Foto produk harus dikirim dalam format WebP');
+      throw new BadRequestException(
+        'Foto produk harus dikirim dalam format WebP',
+      );
     }
 
     if (file.size > 3 * 1024 * 1024) {
-      throw new BadRequestException('Ukuran foto produk maksimal 3 MB setelah dikompresi');
+      throw new BadRequestException(
+        'Ukuran foto produk maksimal 3 MB setelah dikompresi',
+      );
     }
 
+    const buffer = await validatedImage(file.buffer);
     const dir = '/app/uploads/products';
 
-    const safeName = `merchant-${merchantId}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}.webp`;
+    const safeName = `merchant-product-${randomUUID()}.webp`;
 
     try {
       await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, safeName), file.buffer);
+      await writeFile(join(dir, safeName), buffer);
     } catch (error) {
       const code =
         typeof error === 'object' && error && 'code' in error
@@ -83,9 +101,13 @@ export class MerchantProductsService {
 
   async submit(merchantId: string, dto: SubmitMerchantProductDto) {
     return this.ds.transaction(async (em) => {
-      const slugBase = slugify(dto.name, { lower: true, strict: true }) || 'produk';
-      let slug = `${slugBase}-m${merchantId}`, n = 1;
-      while (await em.findOne(Product, { where: { slug }, withDeleted: true })) {
+      const slugBase =
+        slugify(dto.name, { lower: true, strict: true }) || 'produk';
+      let slug = `${slugBase}-m${merchantId}`,
+        n = 1;
+      while (
+        await em.findOne(Product, { where: { slug }, withDeleted: true })
+      ) {
         slug = `${slugBase}-m${merchantId}-${++n}`;
       }
 
@@ -130,11 +152,7 @@ export class MerchantProductsService {
     });
   }
 
-  async update(
-    merchantId: string,
-    id: string,
-    dto: UpdateMerchantProductDto,
-  ) {
+  async update(merchantId: string, id: string, dto: UpdateMerchantProductDto) {
     const product = await this.products.findOne({
       where: { id, merchantId },
       relations: { images: true },
@@ -151,7 +169,9 @@ export class MerchantProductsService {
         : {}),
       ...(dto.category !== undefined ? { category: dto.category.trim() } : {}),
       ...(dto.unit !== undefined ? { unit: dto.unit.trim() } : {}),
-      ...(dto.basePrice !== undefined ? { basePrice: Number(dto.basePrice) } : {}),
+      ...(dto.basePrice !== undefined
+        ? { basePrice: Number(dto.basePrice) }
+        : {}),
       ...(dto.preorderDays !== undefined
         ? { preorderDays: Number(dto.preorderDays) }
         : {}),
@@ -179,7 +199,8 @@ export class MerchantProductsService {
     if ('description' in requested) {
       product.description = requested.description as string | null;
     }
-    if ('category' in requested) product.category = requested.category as string;
+    if ('category' in requested)
+      product.category = requested.category as string;
     if ('unit' in requested) product.unit = requested.unit as string;
     if ('basePrice' in requested) {
       product.basePrice = Number(requested.basePrice);
@@ -221,7 +242,8 @@ export class MerchantProductsService {
 
       if (status === 'approved') {
         if (pending.name !== undefined) p.name = pending.name;
-        if (pending.description !== undefined) p.description = pending.description;
+        if (pending.description !== undefined)
+          p.description = pending.description;
         if (pending.category !== undefined) p.category = pending.category;
         if (pending.unit !== undefined) p.unit = pending.unit;
         if (pending.basePrice !== undefined) {
